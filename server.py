@@ -19,6 +19,76 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
     
+    def do_GET(self):
+        # Handle /api/prompts/<platform> endpoint
+        if self.path.startswith('/api/prompts/'):
+            platform = self.path.split('/')[-1]
+            
+            # Validate platform
+            valid_platforms = ['linkedin', 'instagram', 'circle', 'kakaotalk']
+            if platform not in valid_platforms:
+                self.send_response(404)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'error': f'Invalid platform. Must be one of: {", ".join(valid_platforms)}'
+                }).encode())
+                return
+            
+            # Load prompt from markdown file
+            try:
+                prompt = self.load_prompt_from_md(platform)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'platform': platform,
+                    'prompt': prompt
+                }).encode())
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    'error': f'Failed to load prompt: {str(e)}'
+                }).encode())
+            return
+        
+        # Default: serve static files
+        return super().do_GET()
+    
+    def load_prompt_from_md(self, platform):
+        """Extract AI Prompt section from markdown file"""
+        md_path = f'docs/{platform}.md'
+        
+        if not os.path.exists(md_path):
+            raise FileNotFoundError(f'Documentation file not found: {md_path}')
+        
+        with open(md_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Extract content between "## AI Prompt" and next "##"
+        start_marker = '## AI Prompt'
+        start_idx = content.find(start_marker)
+        
+        if start_idx == -1:
+            raise ValueError(f'AI Prompt section not found in {md_path}')
+        
+        # Find the start of the prompt content (after the header)
+        prompt_start = start_idx + len(start_marker)
+        
+        # Find the next "##" header
+        next_header_idx = content.find('\n##', prompt_start)
+        
+        if next_header_idx == -1:
+            # No next header, take until end of file
+            prompt_content = content[prompt_start:]
+        else:
+            prompt_content = content[prompt_start:next_header_idx]
+        
+        # Clean up the prompt (remove leading/trailing whitespace)
+        prompt = prompt_content.strip()
+        
+        return prompt
+    
     def do_POST(self):
         # Handle /api/gemini endpoint
         if self.path == '/api/gemini':

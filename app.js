@@ -9,71 +9,10 @@ const APP_STATE = {
 };
 
 // ===================================
-// Platform-Specific Prompts
+// Platform Prompts (loaded dynamically from markdown files)
 // ===================================
 
-const PLATFORM_PROMPTS = {
-  linkedin: {
-    name: 'LinkedIn',
-    systemPrompt: `You are a professional LinkedIn content strategist. 
-    Transform the user's content into an engaging LinkedIn post.
-
-REQUIREMENTS:
-- Professional, authoritative tone
-- Length: 1300-1500 characters (aim for engagement sweet spot)
-- Structure: Hook (first line) → Key points → Call-to-action
-- Use 3-5 relevant professional hashtags at the end
-- Strategic line breaks for readability
-- Focus on value delivery and thought leadership
-
-Return ONLY the transformed LinkedIn post, nothing else.`
-  },
-
-  instagram: {
-    name: 'Instagram',
-    systemPrompt: `You are an Instagram content creator. Transform the user's content into an engaging Instagram caption.
-
-REQUIREMENTS:
-- Casual, engaging, friendly tone
-- Length: 125-150 words (optimal for engagement)
-- Include 3-5 strategically placed emojis that enhance the message
-- Strong hook in the first line to grab attention
-- Use 5-8 relevant hashtags at the end
-- Natural, conversational style
-
-Return ONLY the transformed Instagram caption, nothing else.`
-  },
-
-  circle: {
-    name: 'CIRCLE',
-    systemPrompt: `You are a community platform content specialist. Transform the user's content for the CIRCLE platform.
-
-REQUIREMENTS:
-- Informative, community-focused tone
-- Length: Comprehensive (500-800 words) - don't rush, provide depth
-- Use bullet points for scannability and easy reading
-- Include section headers if content is complex
-- Discussion prompts or questions to encourage engagement
-- Structured with clear sections
-
-Return ONLY the transformed CIRCLE post, nothing else.`
-  },
-
-  kakaotalk: {
-    name: 'Kakaotalk',
-    systemPrompt: `You are a messaging platform content specialist. Transform the user's content into a Kakaotalk message.
-
-REQUIREMENTS:
-- Conversational, friendly, direct tone
-- MAXIMUM 3 sentences - this is critical
-- Chat-like style, concise and actionable
-- Clear, simple message format
-- Focus on single key takeaway
-- No hashtags, no emojis (unless extremely natural)
-
-Return ONLY the transformed Kakaotalk message, nothing else.`
-  }
-};
+let PLATFORM_PROMPTS = {};
 
 // ===================================
 // DOM Elements
@@ -442,7 +381,56 @@ function showStatus(type, message) {
 }
 
 // ===================================
-// Initialize App
+// Initialization
 // ===================================
 
+async function loadPlatformPrompts() {
+  const platforms = ['linkedin', 'instagram', 'circle', 'kakaotalk'];
+  const prompts = {};
+
+  try {
+    for (const platform of platforms) {
+      const response = await fetch(`http://localhost:8080/api/prompts/${platform}`);
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(`Failed to load ${platform} prompt: ${data.error}`);
+      }
+
+      prompts[platform] = {
+        name: platform.charAt(0).toUpperCase() + platform.slice(1),
+        systemPrompt: data.prompt
+      };
+    }
+
+    // Special case for CIRCLE (all caps)
+    if (prompts.circle) {
+      prompts.circle.name = 'CIRCLE';
+    }
+
+    return prompts;
+  } catch (error) {
+    console.error('Error loading platform prompts:', error);
+    showStatus('error', 'Failed to load platform instructions. Please refresh the page.');
+    throw error;
+  }
+}
+
+async function init() {
+  try {
+    // Load prompts from markdown files
+    PLATFORM_PROMPTS = await loadPlatformPrompts();
+    console.log('Platform prompts loaded successfully');
+
+    // Attach event listeners
+    attachEventListeners();
+
+    // Initialize UI
+    updateGenerateButtonText();
+  } catch (error) {
+    console.error('Initialization failed:', error);
+  }
+}
+
+// Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
