@@ -15,7 +15,8 @@ const APP_STATE = {
 const PLATFORM_PROMPTS = {
   linkedin: {
     name: 'LinkedIn',
-    systemPrompt: `You are a professional LinkedIn content strategist. Transform the user's content into an engaging LinkedIn post.
+    systemPrompt: `You are a professional LinkedIn content strategist. 
+    Transform the user's content into an engaging LinkedIn post.
 
 REQUIREMENTS:
 - Professional, authoritative tone
@@ -82,6 +83,12 @@ const elements = {
   // Main content
   mainContent: document.getElementById('mainContent'),
 
+  // Platform selectors
+  selectLinkedin: document.getElementById('selectLinkedin'),
+  selectInstagram: document.getElementById('selectInstagram'),
+  selectCircle: document.getElementById('selectCircle'),
+  selectKakaotalk: document.getElementById('selectKakaotalk'),
+
   // Input
   originalContent: document.getElementById('originalContent'),
   generateBtn: document.getElementById('generateBtn'),
@@ -144,6 +151,12 @@ function markConfigured() {
 // ===================================
 
 function attachEventListeners() {
+  // Platform Selection
+  elements.selectLinkedin.addEventListener('change', updateGenerateButtonText);
+  elements.selectInstagram.addEventListener('change', updateGenerateButtonText);
+  elements.selectCircle.addEventListener('change', updateGenerateButtonText);
+  elements.selectKakaotalk.addEventListener('change', updateGenerateButtonText);
+
   // Content Generation
   elements.generateBtn.addEventListener('click', generateAllPlatforms);
   elements.clearBtn.addEventListener('click', clearAll);
@@ -169,6 +182,35 @@ function attachEventListeners() {
 // API key management removed - now handled in backend via .env file
 
 // ===================================
+// Platform Selection
+// ===================================
+
+function getSelectedPlatforms() {
+  const selected = [];
+  if (elements.selectLinkedin.checked) selected.push('linkedin');
+  if (elements.selectInstagram.checked) selected.push('instagram');
+  if (elements.selectCircle.checked) selected.push('circle');
+  if (elements.selectKakaotalk.checked) selected.push('kakaotalk');
+  return selected;
+}
+
+function updateGenerateButtonText() {
+  const selected = getSelectedPlatforms();
+  const btnText = elements.generateBtnText;
+
+  if (selected.length === 0) {
+    btnText.textContent = '🚀 Select at least one platform';
+    elements.generateBtn.disabled = true;
+  } else if (selected.length === 4) {
+    btnText.textContent = '🚀 Generate for All Platforms';
+    elements.generateBtn.disabled = false;
+  } else {
+    btnText.textContent = `🚀 Generate for ${selected.length} Platform${selected.length > 1 ? 's' : ''}`;
+    elements.generateBtn.disabled = false;
+  }
+}
+
+// ===================================
 // Content Generation
 // ===================================
 
@@ -180,32 +222,33 @@ async function generateAllPlatforms() {
     return;
   }
 
-  if (!APP_STATE.apiKey) {
-    showStatus('error', 'Please configure your API key first');
+  const selectedPlatforms = getSelectedPlatforms();
+
+  if (selectedPlatforms.length === 0) {
+    showStatus('error', 'Please select at least one platform');
     return;
   }
 
   APP_STATE.isGenerating = true;
   setGeneratingState(true);
 
-  // Show all platform cards
-  elements.linkedinCard.style.display = 'block';
-  elements.instagramCard.style.display = 'block';
-  elements.circleCard.style.display = 'block';
-  elements.kakaotalkCard.style.display = 'block';
+  // Hide all platform cards first
+  elements.linkedinCard.style.display = 'none';
+  elements.instagramCard.style.display = 'none';
+  elements.circleCard.style.display = 'none';
+  elements.kakaotalkCard.style.display = 'none';
 
-  // Clear previous outputs
-  elements.linkedinOutput.value = 'Generating...';
-  elements.instagramOutput.value = 'Generating...';
-  elements.circleOutput.value = 'Generating...';
-  elements.kakaotalkOutput.value = 'Generating...';
+  // Show and prepare only selected platform cards
+  selectedPlatforms.forEach(platform => {
+    elements[`${platform}Card`].style.display = 'block';
+    elements[`${platform}Output`].value = 'Generating...';
+  });
 
   // Convert to markdown (simple conversion)
   const markdownContent = convertToMarkdown(content);
 
-  // Generate for all platforms in parallel
-  const platforms = ['linkedin', 'instagram', 'circle', 'kakaotalk'];
-  const promises = platforms.map(platform =>
+  // Generate for selected platforms in parallel
+  const promises = selectedPlatforms.map(platform =>
     generateForPlatform(platform, markdownContent)
   );
 

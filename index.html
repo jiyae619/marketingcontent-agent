@@ -31,6 +31,41 @@
             <textarea id="originalContent" class="content-input"
               placeholder="Enter your marketing message here. This will be adapted for each platform with the appropriate tone, length, and formatting..."></textarea>
           </div>
+
+          <!-- Platform Selector -->
+          <div class="platform-selector">
+            <label class="selector-label">Select Platforms:</label>
+            <div class="platform-checkboxes">
+              <label class="platform-checkbox platform-checkbox-linkedin">
+                <input type="checkbox" id="selectLinkedin" checked>
+                <span class="checkbox-label">
+                  <span class="platform-badge platform-linkedin">LinkedIn</span>
+                </span>
+              </label>
+
+              <label class="platform-checkbox platform-checkbox-instagram">
+                <input type="checkbox" id="selectInstagram" checked>
+                <span class="checkbox-label">
+                  <span class="platform-badge platform-instagram">Instagram</span>
+                </span>
+              </label>
+
+              <label class="platform-checkbox platform-checkbox-circle">
+                <input type="checkbox" id="selectCircle" checked>
+                <span class="checkbox-label">
+                  <span class="platform-badge platform-circle">CIRCLE</span>
+                </span>
+              </label>
+
+              <label class="platform-checkbox platform-checkbox-kakaotalk">
+                <input type="checkbox" id="selectKakaotalk" checked>
+                <span class="checkbox-label">
+                  <span class="platform-badge platform-kakaotalk">Kakaotalk</span>
+                </span>
+              </label>
+            </div>
+          </div>
+
           <div class="action-bar">
             <button class="btn btn-primary" id="generateBtn">
               <span id="generateBtnText">🚀 Generate for All Platforms</span>
