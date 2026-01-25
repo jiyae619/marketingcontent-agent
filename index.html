@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Marketing Channel Agent - Intelligent Content Adaptation</title>
+  <meta name="description"
+    content="Intelligently adapt your marketing content for LinkedIn, Instagram, CIRCLE, and Kakaotalk with AI-powered transformations">
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <h1 class="app-title">✨ Marketing Channel Agent</h1>
+      <p class="app-subtitle">Transform your content for every platform, intelligently</p>
+    </header>
+
+    <!-- Main Content Section -->
+    <div id="mainContent">
+      <!-- Input Section -->
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title mb-0">📝 Original Content</h3>
+        </div>
+        <div class="card-body">
+          <div class="form-group">
+            <label for="originalContent">Paste or write your marketing content</label>
+            <textarea id="originalContent" class="content-input"
+              placeholder="Enter your marketing message here. This will be adapted for each platform with the appropriate tone, length, and formatting..."></textarea>
+          </div>
+          <div class="action-bar">
+            <button class="btn btn-primary" id="generateBtn">
+              <span id="generateBtnText">🚀 Generate for All Platforms</span>
+              <span id="generateBtnLoading" class="hidden">
+                <span class="loading-spinner"></span> Generating...
+              </span>
+            </button>
+            <button class="btn btn-secondary btn-small" id="clearBtn">Clear All</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- LinkedIn Section -->
+      <div class="platform-grid">
+        <div class="card fade-in platform-card" id="linkedinCard" style="display: none;">
+          <div class="card-header">
+            <h3 class="card-title">
+              <span class="platform-badge platform-linkedin">LinkedIn</span>
+            </h3>
+            <div class="platform-actions">
+              <button class="btn btn-secondary btn-small copy-btn" data-platform="linkedin">
+                📋 Copy
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-group mb-0">
+              <textarea id="linkedinOutput" class="platform-output"
+                placeholder="LinkedIn version will appear here..."></textarea>
+              <div class="char-counter" id="linkedinCounter">0 characters</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Instagram Section -->
+        <div class="card fade-in platform-card" id="instagramCard" style="display: none;">
+          <div class="card-header">
+            <h3 class="card-title">
+              <span class="platform-badge platform-instagram">Instagram</span>
+            </h3>
+            <div class="platform-actions">
+              <button class="btn btn-secondary btn-small copy-btn" data-platform="instagram">
+                📋 Copy
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-group mb-0">
+              <textarea id="instagramOutput" class="platform-output"
+                placeholder="Instagram version will appear here..."></textarea>
+              <div class="char-counter" id="instagramCounter">0 words</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CIRCLE Section -->
+        <div class="card fade-in platform-card" id="circleCard" style="display: none;">
+          <div class="card-header">
+            <h3 class="card-title">
+              <span class="platform-badge platform-circle">CIRCLE</span>
+            </h3>
+            <div class="platform-actions">
+              <button class="btn btn-secondary btn-small copy-btn" data-platform="circle">
+                📋 Copy
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-group mb-0">
+              <textarea id="circleOutput" class="platform-output"
+                placeholder="CIRCLE version will appear here..."></textarea>
+              <div class="char-counter" id="circleCounter">0 words</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Kakaotalk Section -->
+        <div class="card fade-in platform-card" id="kakaotalkCard" style="display: none;">
+          <div class="card-header">
+            <h3 class="card-title">
+              <span class="platform-badge platform-kakaotalk">Kakaotalk</span>
+            </h3>
+            <div class="platform-actions">
+              <button class="btn btn-secondary btn-small copy-btn" data-platform="kakaotalk">
+                📋 Copy
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="form-group mb-0">
+              <textarea id="kakaotalkOutput" class="platform-output"
+                placeholder="Kakaotalk version will appear here..."></textarea>
+              <div class="char-counter" id="kakaotalkCounter">0 sentences</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Messages -->
+      <div id="statusContainer"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
