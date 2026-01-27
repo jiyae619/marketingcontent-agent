@@ -6,15 +6,15 @@ Kakaotalk is a mobile messaging platform where brevity and directness are essent
 ## Content Requirements
 
 ### Tone & Style
-- **Conversational**: Like texting a friend
+- **Conversational**: Like texting a friend but not too casual
 - **Direct**: Get to the point quickly
 - **Friendly**: Warm and approachable
 - **Action-oriented**: Clear next steps
 
 ### Technical Specifications
 - **Length**: MAXIMUM 3 sentences (critical constraint)
-- **Emojis**: Only if extremely natural (avoid overuse)
-- **Hashtags**: None
+- **Emojis**: Only if extremely natural (avoid overuse), Maximum 2 emojis
+- **Hashtags**: Never
 - **Links**: Keep short or use link shorteners
 
 ### Structure
@@ -23,44 +23,16 @@ Kakaotalk is a mobile messaging platform where brevity and directness are essent
    - Grab attention immediately
 
 2. **Value** (Sentence 2)
-   - Key benefit or information
-   - What's in it for them
+   - Key information (time, location, speakers)
 
 3. **Action** (Sentence 3)
    - Clear CTA
    - What to do next
 
-## AI Prompt
-
-You are a messaging platform content specialist. Transform the user's content into a Kakaotalk message.
-
-REQUIREMENTS:
-- Conversational, friendly, direct tone
-- MAXIMUM 3 sentences - this is critical
-- Chat-like style, concise and actionable
-- Clear, simple message format
-- Focus on single key takeaway
-- No hashtags, no emojis (unless extremely natural)
-
-Return ONLY the transformed Kakaotalk message, nothing else.
 
 ## Examples
 
-### Example 1: Product Launch
-
-**Input:**
-```
-We're launching a new AI tool that helps marketing teams create content faster.
-```
-
-**Output:**
-```
-We just launched an AI tool that creates platform-specific marketing content 
-in seconds! It automatically adapts your message for LinkedIn, Instagram, 
-and more. Want to try it out?
-```
-
-### Example 2: Event Invitation
+### Example 1: Event Invitation
 
 **Input:**
 ```
@@ -137,19 +109,6 @@ Thanks for being an early adopter and providing valuable feedback.
 ```
 Thank you for being an early supporter! Your feedback helped shape the 
 product. Check your email for a special gift 🎁
-```
-
-### Example 8: Problem Alert
-
-**Input:**
-```
-We're experiencing technical issues and working to fix them.
-```
-
-**Output:**
-```
-We're aware of the login issue and our team is fixing it now. We'll update 
-you in 30 minutes—thanks for your patience!
 ```
 
 ## Best Practices
@@ -246,7 +205,7 @@ or automation? Reply with your pick!
 ### Best Times to Send
 - **Morning**: 8-9am (commute time)
 - **Lunch**: 12-1pm (break time)
-- **Evening**: 6-8pm (after work)
+- **Evening**: 7-9pm (after work)
 
 ### Avoid
 - Late night (after 9pm)
@@ -324,28 +283,6 @@ register for the webinar!
 ### ✅ Single CTA
 ```
 New blog post: How to 10x your content output. Read it here: [link]
-```
-
-## Response Templates
-
-### Confirmation
-```
-Got it! Your [action] is confirmed. You'll receive [what] by [when].
-```
-
-### Thank You
-```
-Thanks for [action]! [Benefit/next step]. [Optional CTA]
-```
-
-### Reminder
-```
-Reminder: [Event] starts in [time]! [Quick detail]. [Action/link]
-```
-
-### Follow-up
-```
-Quick follow-up on [topic]. [Key point]. [Question or CTA]
 ```
 
 ## Performance Metrics
