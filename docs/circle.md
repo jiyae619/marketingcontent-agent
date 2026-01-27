@@ -1,7 +1,7 @@
 # CIRCLE Content Strategy
 
 ## Overview
-CIRCLE is a community platform where depth, value, and meaningful discussion are prioritized. Content should be comprehensive, educational, and foster community engagement.
+CIRCLE is a community platform where content is mainly for event notification to foster community engagement.
 
 ## Content Requirements
 
@@ -10,386 +10,246 @@ CIRCLE is a community platform where depth, value, and meaningful discussion are
 - **Community-focused**: Collaborative and inclusive
 - **Helpful**: Solve problems and answer questions
 - **Conversational**: Professional but approachable
+- **Language**: English, Korean (should be the same language as the input language)
 
-### Technical Specifications
-- **Length**: 500-800 words (comprehensive, don't rush)
+### Specifications
+- **Length**: 500-800 words (comprehensive)
 - **Formatting**: Bullet points, headers, clear structure
-- **Hashtags**: Not typically used on CIRCLE
+- **Hashtags**: No
 - **Emojis**: Minimal, used for section headers or emphasis
+- **templates**: from the input keywords, follow the example template accordingly
 
 ### Structure
-1. **Introduction**
+0. **Title**
+   - format: [PKNIC X "event"] "title"
+   - catchy, professional, encouraging title
+   
+2. **Introduction**
    - Set context
    - State the value proposition
    - Hook the reader
 
-2. **Body** (Main content)
+3. **Body** (Main content)
    - Use section headers (##)
+   - Event information: discussion topics, time and location, (if any) special events, speaker
    - Bullet points for scannability
-   - Detailed explanations
-   - Examples and use cases
 
-3. **Community Engagement**
-   - Discussion prompts
-   - Questions for feedback
-   - Call for community input
-
-## AI Prompt
-
-You are a community platform content specialist. Transform the user's content for the CIRCLE platform.
-
-REQUIREMENTS:
-- Informative, community-focused tone
-- Length: Comprehensive (500-800 words) - don't rush, provide depth
-- Use bullet points for scannability and easy reading
-- Include section headers if content is complex
-- Discussion prompts or questions to encourage engagement
-- Structured with clear sections
-
-Return ONLY the transformed CIRCLE post, nothing else.
+4. **Community Engagement**
+   - Questions about the event
+   - Call for community participation
 
 ## Examples
 
-### Example 1: Product Launch
+### Example 1: Free In-person Event 
 
 **Input:**
 ```
-We're launching a new AI tool that helps marketing teams create content faster.
+- online, 온라인, Live
+- free, 무료
 ```
 
 **Output:**
 ```
-🚀 Introducing Our AI-Powered Marketing Content Tool
+🚀 [PKNIC x 주샌프란시스코 총영사관] 2026년, 선택받는 10%가 되기 위한 한걸음
 
-Hey everyone! We're thrilled to share something we've been working on that 
-we think will make a real difference in how you approach content marketing.
+🛑 AI가 당신의 이력서를 3초 만에 거른다면?
 
-## What It Does
+2026년, 채용 시장은 완전히 달라집니다. 단순히 열심히 쓰는 것만으로는 AI 필터링을 통과할 수 없는 시대. 90%가 걸러지는 냉혹한 현실에서, 선택받는 10%가 되는 비밀을 공개합니다.
 
-Our new tool uses advanced AI to transform your marketing content for 
-different platforms automatically. Here's how it works:
+주샌프란시스코 대한민국 총영사관과 PKNIC 이 함께 준비한 이번 세션에서는 단순한 취업 팁이 아닌 '생존 전략'을 다룹니다.
 
-• **Write Once**: Start with your core message or announcement
-• **AI Adaptation**: The tool analyzes each platform's unique requirements
-• **Instant Results**: Get optimized versions for LinkedIn, Instagram, and more
-• **Brand Consistency**: Maintains your voice while adapting to each channel
+✅ Check Point
+AI를 뚫고 '사람'이 읽게 만드는 Resume 작성법
+H-1B, OPT... 신분 불안을 넘어서는 커리어 전략
+LinkedIn 커넥션을 유의미한 관계와 'referral'로 바꾸는 비법
+✅ Bring Your Laptop
+워크샵이 있을 예정입니다. 더 알찬 시간이 될 수 있도록 랩탑을 꼭 지참해 주세요!
 
-## Why We Built This
+🎁 Special Event
+사전 질문지를 작성해 주신 분들 중 추첨을 통해 3명을 선정, 1:1 무료 커리어 코칭(30분) 세션을 제공합니다.
+지금 미리 질문을 남기고, 여러분의 커리어를 재정비해 보세요!
 
-We kept hearing the same frustration from our community: creating content 
-for multiple platforms is time-consuming and mentally draining. You know 
-your message, but translating it for different audiences and formats? 
-That's where things get tough.
-
-The reality is:
-- LinkedIn needs professional, thought-leadership content
-- Instagram requires casual, visual-first captions
-- Each platform has its own "language" and best practices
-- Manually adapting content takes hours of work
-
-## How It Helps You
-
-**Time Savings**: What used to take hours now takes minutes. Early testers 
-report 10x faster content production.
-
-**Better Results**: Platform-optimized content performs better. The AI 
-understands character limits, tone requirements, and engagement patterns 
-for each channel.
-
-**Reduced Stress**: No more writer's block or decision fatigue about how 
-to adapt your message.
-
-**Consistency**: Maintain your brand voice across all platforms without 
-the manual effort.
-
-## Technical Details
-
-For those interested in the under-the-hood stuff:
-- Built on Google Gemini 2.5 Flash
-- Platform-specific prompt engineering
-- Real-time content generation
-- Customizable output parameters
-
-## Real-World Use Cases
-
-**Scenario 1: Product Announcements**
-Launch once, distribute everywhere. The tool ensures your announcement 
-feels native to each platform.
-
-**Scenario 2: Content Marketing**
-Turn blog posts into social content. Extract key points and adapt them 
-for different audiences.
-
-**Scenario 3: Thought Leadership**
-Share insights across platforms without rewriting. Maintain your expertise 
-while speaking each platform's language.
-
-## What's Next
-
-We're actively developing this based on community feedback. Some features 
-on our roadmap:
-
-**Short-term** (Next 30 days):
-- Additional platform support (TikTok, Twitter/X)
-- Custom brand voice training
-- Batch processing for multiple posts
-
-**Medium-term** (Next 90 days):
-- Performance analytics integration
-- A/B testing suggestions
-- Content calendar integration
-
-**Long-term** (6+ months):
-- Multi-language support
-- Industry-specific templates
-- Team collaboration features
-
-## How to Get Started
-
-1. Visit our GitHub repository (link in profile)
-2. Follow the setup instructions in README.md
-3. Add your Google Gemini API key
-4. Start generating content!
-
-## Questions for the Community
-
-We'd love to hear from you:
-
-1. **What platforms do you struggle with most?** We're prioritizing our 
-roadmap based on community needs.
-
-2. **What features would make this more valuable for your workflow?** Your 
-feedback directly shapes our development.
-
-3. **How do you currently handle multi-platform content?** We want to 
-understand your current process and pain points.
-
-4. **Would you be interested in beta testing new features?** We're looking 
-for community members to help us test and refine.
-
-## Community Resources
-
-We're building this in the open and want your involvement:
-
-- **GitHub**: Contribute code, report issues, suggest features
-- **Documentation**: Comprehensive guides and examples
-- **Support**: Active community discussion and help
-
-Drop your thoughts below—your feedback is invaluable! 👇
-
-Looking forward to seeing how you use this tool and what we can build 
-together as a community.
+🗓 일시: 12월 13일 (토) 오후 2시 
+📍 장소: 995 Market St Floor 7, San Francisco, CA 94103
+🎤 연사: 박운영 커리어 코치
+👤 인원제한: 30명
 ```
 
-### Example 2: Educational Content
+### Example 2: In-person Event with tickets
 
 **Input:**
 ```
-Here's how to improve your content marketing ROI.
+- tickets, 티켓
 ```
 
 **Output:**
 ```
-📊 The Complete Guide to Improving Content Marketing ROI
+📊 PKNIC x KOTRA SV | Global Career Development with Soraunni
 
-Content marketing ROI has been declining across industries. If you're 
-seeing lower returns on your content efforts, you're not alone—and there 
-are concrete steps you can take to turn things around.
+//Korean
 
-## Understanding the Problem
+AI 시대, 당신의 커리어는 안녕하십니까? 
+🤯 AI가 일자리를 바꾸는시대, 내 연봉은 그대로 인가요?
+🔥 $40K에서 $400K+ 빅테크 임원, 그리고 $1M CEO가 된 그녀의 비밀 — 궁금하지않나요?
 
-The average content marketing ROI has dropped 40% year-over-year. Here's why:
+실리콘밸리 한복판에서
+UC Berkeley 유학생 → Netflix → Meta → TikTok → $1M 에이전시 CEO로 성장한
+전 TikTok 마케팅 헤드, 이소라님이 전하는 진짜 커리어 이야기.
 
-**Attention Crisis**: People see 5,000+ marketing messages daily. We're 
-not in a content creation crisis—we're in an attention crisis.
+그녀는 ‘운’이 아닌 전략과 스토리로정상에 섰습니다.
+이번 북토크에서, 그녀의 커리어 전략과 브랜딩의 모든 것이 공개됩니다.
 
-**Platform Saturation**: Every platform is oversaturated with content. 
-Standing out requires more than just "good" content.
+📚『너라는 브랜드를 마케팅하라』 북토크 핵심 인사이트
+💰 연봉 퀀텀 점프 전략
+$40K → $110K (Netflix) → $200K (Meta) → $400K+ (TikTok)
+몸값을 2배·3배로 끌어올린 협상 스킬 전격 공개
 
-**Changing Algorithms**: Social platforms prioritize engagement over reach, 
-making it harder to get seen organically.
+🤖 AI 시대 생존 법칙
+스펙이 아닌, AI가 대체 할수없는 ‘스토리텔링’으로 자신을 브랜딩 하는 법
 
-## The Solution Framework
+🚀위기를 기회로 바꾸는 자기 PR
+Meta 레이오프 당일 TikTok 오퍼를 받은, 그녀의 극적인 커리어 반전 스토리
 
-### 1. Platform-Native Content
+🌟 Unapologetically You
+커리어와 인생의 굴곡을 ‘브랜드’로 승화시킨 여정
 
-Stop creating one piece of content and copying it everywhere. Each platform 
-has unique characteristics:
+🔹비슷한 고민을 가진 직장인들과의 네트워킹 시간
 
-**LinkedIn**:
-- Professional tone
-- Longer-form content (1,300-1,500 characters)
-- Thought leadership focus
-- Business hours posting
+“이제회사에서 ‘숨겨진 일잘러’로 끝내지 마세요. 당신의 가치를 세상에 마케팅 할 시간입니다.”
 
-**Instagram**:
-- Visual-first approach
-- Casual, authentic tone
-- 125-150 words optimal
-- Community engagement focus
+🗓️ Date: November 12 (Wed) | 7 PM
+📍 Venue: KOTRA Silicon Valley & Online
 
-**Key Takeaway**: Platform-native content gets 3-5x more engagement than 
-generic cross-posts.
+🎟️ Tickets:
+In-person: $30
+Online: $10 (Promo code ‘ONLINE20’)
+📘 『너라는 브랜드를 마케팅하라』 도서 포함 (선착순 10명 한정 사인본)
+🎁 오프라인 참석자 전원에게 제공되는 스페셜 굿즈 (이벤트 한정 굿즈, 브랜드 협찬 상품, 추첨 경품 등 다채로운 선물 준비!)
+🍾 VIP Dinner (최대 6명): $500
 
-### 2. Value-First Approach
+📩 Inquiries: info@pknic.club
+VIP Dinner 신청은 이메일로만 가능합니다.
+11/02/2025 11:59 PM(EST)까지 전액 환불 가능, 이후에는 환불 불가합니다.
 
-Shift from promotional to educational:
 
-• **Before**: "Buy our product!"
-• **After**: "Here's how to solve your problem (our product is one solution)"
+//English
+Is Your Career Safe in the Age of AI?
+🤯 AI is reshaping the job market, is your salary keeping up?
+🔥 From a $40K restaurant worker to a $400K+ Big Tech executive — and now a $1M CEO — want to know her secret?
 
-Educational content gets shared 8x more than promotional content.
+Right in the heart of Silicon Valley, she went from a UC Berkeley student → Netflix → Meta → TikTok → and finally, the CEO of a $1M marketing agency.
 
-### 3. Quality Over Quantity
+Join Sora Lee, former Head of Marketing at TikTok, as she shares her real and unfiltered career journey — not built on luck, but on strategy and storytelling.
 
-**Old Strategy**: Post daily on every platform
-**New Strategy**: Post 3x per week with high-quality, platform-optimized content
+At this exclusive Book Talk, you’ll uncover how she built her career, negotiated her worth, and turned personal challenges into a powerful brand.
 
-Results from our community:
-- 60% reduction in content creation time
-- 200% increase in engagement rates
-- 150% improvement in conversion rates
+📚 Key Insights from 『너라는 브랜드를 마케팅하라』 
+💰 Salary Quantum Jump Strategy
+From $40K → $110K (Netflix) → $200K (Meta) → $400K+ (TikTok)
+Discover the negotiation tactics that multiplied her value — again and again.
 
-### 4. Measure What Matters
+🤖 Surviving the AI Era
+Learn how to brand yourself through storytelling — the one skill AI can’t replace.
 
-Stop tracking vanity metrics. Focus on:
+🚀 Turning Crisis into Opportunity
+Hear how she landed her TikTok offer on the very day she was laid off from Meta.
 
-**Engagement Rate**: (Likes + Comments + Shares) / Reach
-**Save Rate**: Saves / Reach (indicates value)
-**Click-Through Rate**: Clicks / Impressions
-**Conversion Rate**: Conversions / Clicks
+🌟 Unapologetically You
+How she transformed the ups and downs of her life and career into a compelling personal brand.
 
-## Implementation Checklist
+🔹 Plus, a special networking session with like-minded professionals.
 
-**Week 1: Audit**
-- [ ] Review current content performance
-- [ ] Identify top-performing content
-- [ ] Analyze platform-specific metrics
-- [ ] Survey audience preferences
+“Stop being the hidden star at your company. It’s time to market your value to the world.”
 
-**Week 2: Strategy**
-- [ ] Define platform-specific goals
-- [ ] Create content pillars
-- [ ] Develop posting schedule
-- [ ] Set up tracking systems
+🗓️ Date: Wednesday, November 12 | 7 PM
+📍 Venue: KOTRA Silicon Valley & Online
+🎟️ Tickets:
+In-person: $30
+Online: $10 (Use promo code ‘ONLINE20’)
+📘 Includes a copy of 『너라는 브랜드를 마케팅하라』 (First 10 attendees will receive signed copies!)
+🎁 Special event goodies and sponsor gifts for all attendees, plus raffle prizes!
+🍾 VIP Dinner (6 guests max): $500
 
-**Week 3: Execution**
-- [ ] Create platform-native content
-- [ ] Implement new posting schedule
-- [ ] Engage with audience actively
-- [ ] Monitor early metrics
-
-**Week 4: Optimize**
-- [ ] Analyze performance data
-- [ ] Adjust strategy based on results
-- [ ] Double down on what works
-- [ ] Cut what doesn't
-
-## Tools to Help
-
-**Content Creation**:
-- AI-powered adaptation tools (like ours!)
-- Canva for visual content
-- Grammarly for copy editing
-
-**Analytics**:
-- Platform native analytics
-- Google Analytics for website traffic
-- Social media management tools
-
-**Scheduling**:
-- Buffer or Hootsuite for posting
-- Content calendar tools
-- Team collaboration platforms
-
-## Common Mistakes to Avoid
-
-❌ **Posting the same content everywhere**: Each platform needs native content
-❌ **Ignoring comments**: Engagement drives algorithm visibility
-❌ **Focusing on followers**: Engagement rate matters more than follower count
-❌ **Not testing**: A/B test everything—headlines, formats, timing
-❌ **Giving up too soon**: Content marketing is a long game
-
-## Discussion Questions
-
-Let's learn from each other:
-
-1. **What's your current content marketing ROI?** Share your metrics (if comfortable)
-2. **What's working for you right now?** Let's celebrate wins
-3. **Where are you stuck?** Community can help troubleshoot
-4. **What tools are you using?** Share your stack
-
-Drop your experiences below! 👇
+📩 Inquiries: info@pknic.club
+Full refunds available until Nov 2, 2025 (11:59 PM EST). All sales final after this date.
 ```
+
+### Example 3: Online Event (free)
+
+**Input:**
+```
+- tickets, 티켓
+```
+
+**Output:**
+```
+📊 헤드헌터가 직접 뽑는다!
+
+🌎 미국 내 ‘실제 채용 중인 포지션', 헤드헌터에게 직접 듣는다!
+
+ [온라인 채용설명회] 미국 커리어의 문을 여는 90분
+— H-1B · 영주권 스폰서십을 적극 제공하는 대기업들의 실시간 채용 전략 공개
+
+배터리·에너지는 물론 제조, 무역, F&B, Operations까지
+다양한 분야에서 $100K+ 포지션을 노리는 당신을 위한 시간
+
+이벤트 하이라이트
+🇺🇸 실제 진행 중인 대기업 미국 채용 공고 공개 및 추천
+AI 가속화 시대의 기술·비기술 트렌드 & 커리어 인사이트
+합격을 위한 준비 과정 & 면접 전략 (한국과 미국차이)
+실시간 Q&A + 네트워킹 기회
+
+이런 분들에게 추천합니다
+미국 내 대기업 취업을 준비 중인 대학생 및 사회 초년생
+배터리·에너지·제조·무역·F&B·Operations 커리어 입문/전환을 꿈꾸는 분
+미국 비즈니스 환경 속 경력 성장 전략을 배우고 싶은 분
+
+
+🛠️ 연사
+Won Park (https://www.linkedin.com/in/iseecareers/)
+• 2013년 설립된 ISEE Career Solutions 미국 법인 대표
+• Chicago-based 베테랑 헤드헌터
+• Public Administration, Organizational Behavior and HR Manangement 박사
+
+일시: 11월 20일(목) 7 PM CST (한국시간 11월 21일(금) 10 AM)
+장소: 온라인
+
+📩 Inquiries: info@pknic.club
+```
+
 
 ## Best Practices
 
 ### Do's ✅
-- Provide comprehensive, valuable information
 - Use clear structure with headers and bullets
-- Include actionable takeaways
+- Include actionable encouragement to participate
 - Encourage community discussion
-- Share data and examples
-- Be transparent and authentic
-- Respond to all comments
-- Update posts with new information
+
 
 ### Don'ts ❌
 - Don't post shallow, surface-level content
 - Avoid overly promotional language
-- Don't ignore community feedback
 - Skip walls of text without formatting
-- Avoid making claims without backing them up
-- Don't post and disappear
 
 ## Content Structure Templates
 
 ### Announcement Template
 ```
-🚀 [Headline]
+🚀 [PKNIC X "event"] "title"
 
 [Brief introduction - what and why]
 
-## What It Does
-[Bullet points of features/benefits]
+## Discussion Topics
+[Bullet points of topics, highlights of the events]
 
-## Why We Built This
-[Problem statement and solution]
+## Target Audiences
+[Bullet points of Specific benefits with target audiences]
 
-## How It Helps You
-[Specific benefits with examples]
-
-## What's Next
-[Roadmap and future plans]
+## Info
+[Bullet points of time, location, (if any) ticket prices]
 
 ## Questions for the Community
-[Specific questions to drive discussion]
-```
-
-### Educational Template
-```
-📊 [Title: The Complete Guide to X]
-
-[Problem statement and context]
-
-## Understanding the Problem
-[Detailed explanation]
-
-## The Solution Framework
-### 1. [Solution Component]
-[Detailed explanation with examples]
-
-### 2. [Solution Component]
-[Detailed explanation with examples]
-
-## Implementation Checklist
-[Step-by-step action items]
-
-## Tools to Help
-[Recommended resources]
-
-## Discussion Questions
-[Community engagement prompts]
+[Link to the email address]
 ```
 
 ## Engagement Tactics
