@@ -22,34 +22,21 @@ Instagram is a visual-first platform where authenticity, creativity, and communi
    - Stop the scroll
    - Create curiosity or emotion
    - Make it relatable
+   - Speakers highlight
 
 2. **Body** (Main message)
    - Keep it conversational
    - Share value or entertainment
    - Be authentic and personal
+   - Bullet points of time, location, (if any) ticket prices
 
 3. **Call-to-Action**
    - Ask a question
-   - Encourage saves/shares
-   - Invite comments
 
-## AI Prompt
-
-You are an Instagram content creator. Transform the user's content into an engaging Instagram caption.
-
-REQUIREMENTS:
-- Casual, engaging, friendly tone
-- Length: 125-150 words (optimal for engagement)
-- Include 3-5 strategically placed emojis that enhance the message
-- Strong hook in the first line to grab attention
-- Use 5-8 relevant hashtags at the end
-- Natural, conversational style
-
-Return ONLY the transformed Instagram caption, nothing else.
 
 ## Examples
 
-### Example 1: Product Announcement
+### Example 1: Event Announcement
 
 **Input:**
 ```
@@ -112,35 +99,6 @@ What's a project you've poured your heart into lately?
 #EntrepreneurLife #SmallBusiness
 ```
 
-### Example 3: Educational Content
-
-**Input:**
-```
-Here are 5 tips for better social media engagement.
-```
-
-**Output:**
-```
-Your engagement is low because you're making these mistakes 👀
-
-We analyzed 1000+ posts and found the patterns. Here's what actually works:
-
-1️⃣ Post when your audience is active (not when it's convenient for you)
-2️⃣ Ask questions that require more than yes/no answers
-3️⃣ Use carousel posts—they get 3x more engagement
-4️⃣ Reply to EVERY comment in the first hour
-5️⃣ Create content people want to save and share
-
-The algorithm rewards engagement. Give people a reason to engage 💡
-
-Save this for later and try one tip this week!
-
-Which tip are you trying first? Drop a number below 👇
-
-#SocialMediaTips #InstagramGrowth #ContentStrategy #DigitalMarketing 
-#SocialMediaMarketing #InstagramTips #MarketingTips
-```
-
 ## Best Practices
 
 ### Do's ✅
@@ -149,23 +107,18 @@ Which tip are you trying first? Drop a number below 👇
 - Include a clear CTA
 - Use line breaks for readability
 - Engage with comments quickly
-- Post consistently (3-5 times per week)
-- Use Instagram Stories to complement feed posts
-- Create saveable/shareable content
+- Highlight speakers professional
 
 ### Don'ts ❌
 - Don't use more than 8 hashtags in caption
 - Avoid overly promotional language
-- Don't ignore comments
 - Skip generic stock photo captions
 - Avoid walls of text
-- Don't post and ghost
 
 ## Hashtag Strategy
 
 ### Categories
-- **Niche-specific**: #ContentCreators, #MarketingTips
-- **Community**: #SmallBusiness, #Entrepreneurs
+- ALWAYS INCLUDE: #pknic #피크닉 as default
 - **Trending**: Check Instagram's trending hashtags
 - **Size mix**: 
   - 2-3 large (1M+ posts)
@@ -173,7 +126,7 @@ Which tip are you trying first? Drop a number below 👇
   - 2-3 small (10K-100K posts)
 
 ### Placement
-- Include in caption (not first comment)
+- Include in caption
 - Place at the end after your message
 - Use relevant, searchable hashtags
 - Rotate hashtags to avoid being flagged
@@ -205,7 +158,6 @@ Which tip are you trying first? Drop a number below 👇
 ## Engagement Tactics
 
 ### Increase Saves
-- Create educational content
 - Share tips and tutorials
 - Make lists and guides
 - Provide templates or resources
@@ -242,7 +194,6 @@ Which tip are you trying first? Drop a number below 👇
 ## Content Types That Perform Well
 
 ### High-Engagement Formats
-- **Carousels**: Educational slides, before/after, step-by-step
 - **Reels**: Short-form video, trending audio, tutorials
 - **Stories**: Behind-the-scenes, polls, Q&A
 - **User-generated content**: Customer features, testimonials
