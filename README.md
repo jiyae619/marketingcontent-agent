@@ -71,10 +71,26 @@ http://localhost:8080
 
 ## Platform-Specific Transformations
 
-- **LinkedIn**: Professional tone, 1300-1500 characters, thought leadership focus
+- **LinkedIn**: Professional tone, 1,000 characters, thought leadership focus
 - **Instagram**: Casual tone, 125-150 words, emoji-enhanced, engaging
 - **CIRCLE**: Community-focused, 500-800 words, comprehensive with bullet points
 - **Kakaotalk**: Conversational, maximum 3 sentences, direct and actionable
+
+## Testing the Model
+
+Want to validate your AI prompts or test content quality?
+
+**Quick test:**
+```bash
+python3 testing/core/eval_runner.py
+open testing/results/report_*.html
+```
+
+**Test your own content:**
+1. Edit `testing/core/test_user_input.py` (line 125)
+2. Run: `python3 testing/core/test_user_input.py`
+
+📖 **See [TESTING_GUIDE.md](TESTING_GUIDE.md) for complete instructions**
 
 ## Security
 

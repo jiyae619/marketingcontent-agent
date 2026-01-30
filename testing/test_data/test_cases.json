@@ -1,0 +1,52 @@
+{
+    "test_cases": [
+        {
+            "id": "linkedin_tech_announcement",
+            "platform": "linkedin",
+            "input": "We're excited to announce the launch of our new AI-powered analytics platform. This tool helps businesses make data-driven decisions faster and more accurately. Key features include real-time dashboards, predictive analytics, and seamless integration with existing tools.",
+            "description": "Tech product announcement for LinkedIn"
+        },
+        {
+            "id": "instagram_event_promo",
+            "platform": "instagram",
+            "input": "Join us for our annual tech conference on March 15th! Network with industry leaders, attend workshops, and discover the latest innovations. Early bird tickets available now.",
+            "description": "Event promotion for Instagram"
+        },
+        {
+            "id": "circle_career_workshop",
+            "platform": "circle",
+            "input": "PKNIC is hosting a career development workshop focused on resume building and interview skills for tech professionals. The workshop will cover AI-optimized resumes, networking strategies, and mock interviews. Free for community members. Saturday, February 10th at 2 PM PST.",
+            "description": "Community workshop announcement for CIRCLE"
+        },
+        {
+            "id": "kakaotalk_quick_reminder",
+            "platform": "kakaotalk",
+            "input": "Don't forget! Our networking event is tomorrow at 6 PM. Register now to secure your spot. Limited seats available.",
+            "description": "Quick event reminder for Kakaotalk"
+        },
+        {
+            "id": "linkedin_thought_leadership",
+            "platform": "linkedin",
+            "input": "The future of work is being reshaped by AI and automation. Companies that embrace these technologies while maintaining human-centered values will thrive. Here's what leaders need to know about building AI-ready teams and fostering innovation in the workplace.",
+            "description": "Thought leadership post for LinkedIn"
+        },
+        {
+            "id": "instagram_community_highlight",
+            "platform": "instagram",
+            "input": "Shoutout to our amazing community members who participated in last week's hackathon! Your creativity and innovation continue to inspire us. Check out the winning projects on our website.",
+            "description": "Community highlight for Instagram"
+        },
+        {
+            "id": "circle_free_event",
+            "platform": "circle",
+            "input": "PKNIC x San Francisco Korean Consulate presents: Career Success in 2026. Learn how to create AI-proof resumes, navigate H-1B and OPT challenges, and turn LinkedIn connections into job referrals. Free workshop with laptop required. December 13th, 2 PM at 995 Market St, San Francisco. Limited to 30 attendees. Bonus: 3 lucky participants will receive free 1-on-1 career coaching sessions.",
+            "description": "Free in-person event for CIRCLE"
+        },
+        {
+            "id": "kakaotalk_urgent_update",
+            "platform": "kakaotalk",
+            "input": "Venue change! Tonight's meetup is now at Building B, Room 301. See you at 7 PM!",
+            "description": "Urgent update for Kakaotalk"
+        }
+    ]
+}

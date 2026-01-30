@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluation Report - 2026-01-27 14:29:52</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .header h1 {
+            color: #2d3748;
+            margin-bottom: 10px;
+        }
+        
+        .header .timestamp {
+            color: #718096;
+            font-size: 14px;
+        }
+        
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .summary-card {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .summary-card h3 {
+            color: #4a5568;
+            font-size: 14px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .summary-card .value {
+            color: #2d3748;
+            font-size: 32px;
+            font-weight: bold;
+        }
+        
+        .test-card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .test-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+        
+        .test-card.passed {
+            border-left: 5px solid #48bb78;
+        }
+        
+        .test-card.failed {
+            border-left: 5px solid #f56565;
+        }
+        
+        .test-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+        
+        .test-title {
+            flex: 1;
+        }
+        
+        .test-title h2 {
+            color: #2d3748;
+            font-size: 20px;
+            margin-bottom: 5px;
+        }
+        
+        .test-title .platform {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+        
+        .test-title .description {
+            color: #718096;
+            font-size: 14px;
+        }
+        
+        .status-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .status-badge.passed {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+        
+        .status-badge.failed {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+        
+        .overall-score {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .score-label {
+            color: #4a5568;
+            font-weight: 600;
+        }
+        
+        .score-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .criteria-grid {
+            display: grid;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .criterion {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #cbd5e0;
+        }
+        
+        .criterion.passed {
+            border-left-color: #48bb78;
+            background: #f0fff4;
+        }
+        
+        .criterion.failed {
+            border-left-color: #f56565;
+            background: #fff5f5;
+        }
+        
+        .criterion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .criterion-name {
+            font-weight: 600;
+            color: #2d3748;
+            text-transform: capitalize;
+        }
+        
+        .criterion-score {
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .criterion.passed .criterion-score {
+            color: #22543d;
+        }
+        
+        .criterion.failed .criterion-score {
+            color: #742a2a;
+        }
+        
+        .criterion-message {
+            color: #4a5568;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        
+        .criterion-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #e2e8f0;
+        }
+        
+        .detail-item {
+            font-size: 13px;
+        }
+        
+        .detail-label {
+            color: #718096;
+            font-weight: 500;
+        }
+        
+        .detail-value {
+            color: #2d3748;
+            font-weight: 600;
+        }
+        
+        .suggestion {
+            background: #edf2f7;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 13px;
+            color: #2d3748;
+            border-left: 3px solid #667eea;
+        }
+        
+        .suggestion::before {
+            content: "💡 ";
+        }
+        
+        .generated-content {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .generated-content h4 {
+            color: #4a5568;
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .generated-content pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: #2d3748;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #48bb78, #38a169);
+            transition: width 0.3s ease;
+        }
+        
+        .progress-fill.low {
+            background: linear-gradient(90deg, #f56565, #e53e3e);
+        }
+        
+        .progress-fill.medium {
+            background: linear-gradient(90deg, #ed8936, #dd6b20);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Evaluation Report</h1>
+            <p class="timestamp">Generated: 2026-01-27 14:29:52</p>
+            
+            <div class="summary">
+                <div class="summary-card">
+                    <h3>Total Tests</h3>
+                    <div class="value">8</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Passed</h3>
+                    <div class="value" style="color: #48bb78;">1</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Failed</h3>
+                    <div class="value" style="color: #f56565;">7</div>
+                </div>
+                <div class="summary-card">
+                    <h3>Success Rate</h3>
+                    <div class="value" style="color: #f56565;">12.5%</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="test-card failed">
+            <div class="test-header">
+                <div class="test-title">
+                    <h2>linkedin_tech_announcement</h2>
+                    <div>
+                        <span class="platform">linkedin</span>
+                        <span class="description">Tech product announcement for LinkedIn</span>
+                    </div>
+                </div>
+                <span class="status-badge failed">FAILED</span>
+            </div>
+            
+            <div class="overall-score">
+                <span class="score-label">Overall Score</span>
+                <span class="score-value">61/100</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill medium" style="width: 61.205128205128204%"></div>
+            </div>
+            
+            <div class="criteria-grid">
+
+                <div class="criterion failed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">length</span>
+                        <span class="criterion-score">34/100</span>
+                    </div>
+                    <div class="criterion-message">✗ Too short: 437 characters (minimum: 1300)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">1300-1500 characters</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">437</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Add 863 more characters (66% too short). Consider expanding on key points, adding examples, or including more detail.</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">tone</span>
+                        <span class="criterion-score">50/100</span>
+                    </div>
+                    <div class="criterion-message">✓ Professional tone detected (2 indicators: insight, innovation)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">At least 2 professional indicators</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">2 professional indicators</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Good professional tone. Consider adding more industry-specific terms.</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">format</span>
+                        <span class="criterion-score">100/100</span>
+                    </div>
+                    <div class="criterion-message">✓ Excellent paragraph structure (6 paragraphs)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">At least 2-3 paragraphs</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">6 paragraphs</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Great formatting with clear paragraph breaks!</div>
+
+                </div>
+
+            </div>
+
+            <div class="generated-content">
+                <h4>Generated Content</h4>
+                <pre>Struggling to turn data into actionable insights?
+
+Our new AI-powered analytics platform is here to revolutionize your decision-making process.
+
+✅ Real-time dashboards for instant visibility.
+✅ Predictive analytics to anticipate future trends.
+✅ Seamless integration with your current systems.
+
+Ready to unlock the power of data?
+
+Learn more and request a demo today! [link]
+
+#AI #Analytics #DataDriven #BusinessIntelligence #Innovation
+</pre>
+            </div>
+
+        </div>
+
+        <div class="test-card failed">
+            <div class="test-header">
+                <div class="test-title">
+                    <h2>instagram_event_promo</h2>
+                    <div>
+                        <span class="platform">instagram</span>
+                        <span class="description">Event promotion for Instagram</span>
+                    </div>
+                </div>
+                <span class="status-badge failed">FAILED</span>
+            </div>
+            
+            <div class="overall-score">
+                <span class="score-label">Overall Score</span>
+                <span class="score-value">84/100</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill " style="width: 84.0%"></div>
+            </div>
+            
+            <div class="criteria-grid">
+
+                <div class="criterion failed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">length</span>
+                        <span class="criterion-score">84/100</span>
+                    </div>
+                    <div class="criterion-message">✗ Too short: 105 words (minimum: 125)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">125-150 words</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">105</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Add 20 more words (16% too short). Expand with more details or examples.</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">tone</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">✓ Casual/engaging tone detected (6 indicators)</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">emojis</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">✓ Contains 5 emoji(s)</div>
+
+                </div>
+
+            </div>
+
+            <div class="generated-content">
+                <h4>Generated Content</h4>
+                <pre>Techies, mark your calendars! 🗓️ Our annual tech conference is BACK on March 15th, and you definitely don't want to miss this.
+
+Get ready to dive deep into the latest innovations, network with some seriously impressive industry leaders, and level up your skills in our hands-on workshops. It's the perfect opportunity to connect, learn, and get inspired. ✨
+
+We're talking cutting-edge insights, game-changing discussions, and a whole lot of fun. 🥳 Plus, snag your early bird tickets now to save some 💰! Let's innovate together! 🚀
+
+Link in bio for tickets and more info. See you there!
+
+#techconference #innovation #networking #techcommunity #earlybird #workshops #pknic #피크닉
+</pre>
+            </div>
+
+        </div>
+
+        <div class="test-card failed">
+            <div class="test-header">
+                <div class="test-title">
+                    <h2>circle_career_workshop</h2>
+                    <div>
+                        <span class="platform">circle</span>
+                        <span class="description">Community workshop announcement for CIRCLE</span>
+                    </div>
+                </div>
+                <span class="status-badge failed">FAILED</span>
+            </div>
+            
+            <div class="overall-score">
+                <span class="score-label">Overall Score</span>
+                <span class="score-value">91/100</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill " style="width: 91.4%"></div>
+            </div>
+            
+            <div class="criteria-grid">
+
+                <div class="criterion failed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">length</span>
+                        <span class="criterion-score">91/100</span>
+                    </div>
+                    <div class="criterion-message">✗ Too short: 457 words (minimum: 500)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">500-800 words</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">457</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Add 43 more words (9% too short). Include more details, examples, or expand sections.</div>
+
+                </div>
+
+                <div class="criterion failed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">structure</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">Structure check: title ✗, headers ✗, engagement ✓</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">formatting</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">✓ Has bullet points and emojis</div>
+
+                </div>
+
+            </div>
+
+            <div class="generated-content">
+                <h4>Generated Content</h4>
+                <pre>PKNIC Career Development Workshop: Level Up Your Tech Career 🚀
+
+Hello PKNIC community!
+
+We're excited to announce an upcoming opportunity to enhance your career prospects with our exclusive Career Development Workshop, focusing on resume building and interview skills tailored for tech professionals. This free workshop is designed to equip you with the latest strategies and techniques to stand out in today's competitive job market. Mark your calendars!
+
+**Workshop Details:**
+
+*   **Topic:** Career Development Workshop: Resume Building & Interview Skills for Tech Professionals
+*   **Date:** Saturday, February 10th
+*   **Time:** 2:00 PM PST
+*   **Cost:** Free for PKNIC Community Members
+
+**What You'll Learn:**
+
+This workshop will be packed with actionable insights and practical exercises, covering key aspects of the job application and interview process. Here's a breakdown of what you can expect:
+
+*   **Crafting an AI-Optimized Resume:**
+    *   Understand how Applicant Tracking Systems (ATS) work and how to optimize your resume for them.
+    *   Learn to identify relevant keywords and incorporate them strategically into your resume.
+    *   Discover tools and resources for creating visually appealing and impactful resumes.
+*   **Networking Strategies for Tech Professionals:**
+    *   Effective techniques for building and maintaining professional relationships.
+    *   Leveraging online platforms like LinkedIn to expand your network.
+    *   Attending industry events and conferences to meet potential employers and collaborators.
+*   **Mastering the Interview: Mock Interviews and Feedback:**
+    *   Participate in realistic mock interviews simulating common tech interview scenarios.
+    *   Receive personalized feedback on your performance, including areas for improvement.
+    *   Learn strategies for answering behavioral questions, technical questions, and salary negotiation.
+
+**Why Attend?**
+
+*   **Stay Ahead of the Curve:** Learn the latest trends in resume building and interview techniques, including the use of AI and other advanced technologies.
+*   **Gain Practical Skills:** Participate in hands-on exercises and receive personalized feedback to improve your job application and interview performance.
+*   **Network with Fellow Professionals:** Connect with other PKNIC community members and build valuable relationships that can help you advance your career.
+*   **Boost Your Confidence:** Prepare for your next job interview with confidence, knowing that you have the skills and knowledge to succeed.
+
+**Preparation:**
+
+To make the most of this workshop, we recommend that you bring a copy of your current resume (digital or print) and be prepared to actively participate in the mock interview sessions.
+
+**Community Engagement:**
+
+We want to make this workshop as valuable as possible for our community. Please share your questions and topics you'd like to see covered in the comments below! What are your biggest challenges when it comes to resume building and interviewing? What are you hoping to get out of this workshop?
+
+We encourage you to share this opportunity with other tech professionals who may benefit from it. Let’s help each other level up our careers!
+</pre>
+            </div>
+
+        </div>
+
+        <div class="test-card failed">
+            <div class="test-header">
+                <div class="test-title">
+                    <h2>kakaotalk_quick_reminder</h2>
+                    <div>
+                        <span class="platform">kakaotalk</span>
+                        <span class="description">Quick event reminder for Kakaotalk</span>
+                    </div>
+                </div>
+                <span class="status-badge failed">FAILED</span>
+            </div>
+            
+            <div class="overall-score">
+                <span class="score-label">Overall Score</span>
+                <span class="score-value">70/100</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill medium" style="width: 70.0%"></div>
+            </div>
+            
+            <div class="criteria-grid">
+
+                <div class="criterion failed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">length</span>
+                        <span class="criterion-score">70/100</span>
+                    </div>
+                    <div class="criterion-message">✗ Too many sentences: 4 (maximum: 3)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">Maximum 3 sentences</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">4</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Remove 1 sentence(s). Combine ideas or remove less critical information.</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">tone</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">✓ Direct/conversational tone detected (5 indicators)</div>
+
+                </div>
+
+            </div>
+
+            <div class="generated-content">
+                <h4>Generated Content</h4>
+                <pre>Hey! Networking event tomorrow at 6 PM – don't miss it! 😉 Register now to grab a spot before they're gone. See you there!
+</pre>
+            </div>
+
+        </div>
+
+        <div class="test-card failed">
+            <div class="test-header">
+                <div class="test-title">
+                    <h2>linkedin_thought_leadership</h2>
+                    <div>
+                        <span class="platform">linkedin</span>
+                        <span class="description">Thought leadership post for LinkedIn</span>
+                    </div>
+                </div>
+                <span class="status-badge failed">FAILED</span>
+            </div>
+            
+            <div class="overall-score">
+                <span class="score-label">Overall Score</span>
+                <span class="score-value">75/100</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill " style="width: 75.46153846153847%"></div>
+            </div>
+            
+            <div class="criteria-grid">
+
+                <div class="criterion failed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">length</span>
+                        <span class="criterion-score">51/100</span>
+                    </div>
+                    <div class="criterion-message">✗ Too short: 668 characters (minimum: 1300)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">1300-1500 characters</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">668</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Add 632 more characters (49% too short). Consider expanding on key points, adding examples, or including more detail.</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">tone</span>
+                        <span class="criterion-score">75/100</span>
+                    </div>
+                    <div class="criterion-message">✓ Professional tone detected (4 indicators: expertise, leadership, innovation)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">At least 2 professional indicators</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">4 professional indicators</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Excellent professional tone!</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">format</span>
+                        <span class="criterion-score">100/100</span>
+                    </div>
+                    <div class="criterion-message">✓ Excellent paragraph structure (6 paragraphs)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">At least 2-3 paragraphs</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">6 paragraphs</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Great formatting with clear paragraph breaks!</div>
+
+                </div>
+
+            </div>
+
+            <div class="generated-content">
+                <h4>Generated Content</h4>
+                <pre>Is your company prepared for the AI revolution? 🤖
+
+AI & automation are no longer futuristic concepts—they're actively reshaping the workplace. Leaders must prioritize building AI-ready teams equipped to leverage these technologies. This involves:
+
+*   Upskilling current employees to work alongside AI.
+*   Recruiting talent with expertise in AI and related fields.
+*   Fostering a culture of innovation that encourages experimentation.
+
+Companies that embrace AI while staying human-centered will be the future's success stories.
+
+What strategies are you using to prepare your team? Share your thoughts below! 👇
+
+#AI #FutureofWork #Leadership #Innovation #Automation
+</pre>
+            </div>
+
+        </div>
+
+        <div class="test-card passed">
+            <div class="test-header">
+                <div class="test-title">
+                    <h2>instagram_community_highlight</h2>
+                    <div>
+                        <span class="platform">instagram</span>
+                        <span class="description">Community highlight for Instagram</span>
+                    </div>
+                </div>
+                <span class="status-badge passed">PASSED</span>
+            </div>
+            
+            <div class="overall-score">
+                <span class="score-label">Overall Score</span>
+                <span class="score-value">100/100</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill " style="width: 100.0%"></div>
+            </div>
+            
+            <div class="criteria-grid">
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">length</span>
+                        <span class="criterion-score">100/100</span>
+                    </div>
+                    <div class="criterion-message">✓ Word count (129) is within optimal range (125-150)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">125-150 words</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">129</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Perfect length for Instagram engagement!</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">tone</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">✓ Casual/engaging tone detected (7 indicators)</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">emojis</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">✓ Contains 4 emoji(s)</div>
+
+                </div>
+
+            </div>
+
+            <div class="generated-content">
+                <h4>Generated Content</h4>
+                <pre>What an incredible week it's been! 🤩 Still buzzing from the energy of last week's hackathon and wanted to give a massive shoutout to everyone who participated. Seriously, your talent and passion blew us away!
+
+It's so inspiring to witness the creative ideas that come from our community. You all brought your A-game, and the projects were absolutely mind-blowing. Each submission was super unique, and it made selecting the winners extra tough! 🏆
+
+We're so proud to have such innovative and dedicated individuals as part of our community. If you haven't already, head over to our website to check out the winning projects. Prepare to be amazed! 😉 Let us know which one is your favorite in the comments below! 👇
+
+#hackathon #communitylove #innovation #techcommunity #webdev #pknic #피크닉 #codinglife
+</pre>
+            </div>
+
+        </div>
+
+        <div class="test-card failed">
+            <div class="test-header">
+                <div class="test-title">
+                    <h2>circle_free_event</h2>
+                    <div>
+                        <span class="platform">circle</span>
+                        <span class="description">Free in-person event for CIRCLE</span>
+                    </div>
+                </div>
+                <span class="status-badge failed">FAILED</span>
+            </div>
+            
+            <div class="overall-score">
+                <span class="score-label">Overall Score</span>
+                <span class="score-value">100/100</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill " style="width: 100.0%"></div>
+            </div>
+            
+            <div class="criteria-grid">
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">length</span>
+                        <span class="criterion-score">100/100</span>
+                    </div>
+                    <div class="criterion-message">✓ Word count (506) is within optimal range (500-800)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">500-800 words</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">506</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Perfect length for CIRCLE community posts!</div>
+
+                </div>
+
+                <div class="criterion failed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">structure</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">Structure check: title ✗, headers ✗, engagement ✓</div>
+
+                </div>
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">formatting</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">✓ Has bullet points and emojis</div>
+
+                </div>
+
+            </div>
+
+            <div class="generated-content">
+                <h4>Generated Content</h4>
+                <pre>**PKNIC X San Francisco Korean Consulate: Career Success in 2026 Workshop**
+
+👋 Hello everyone!
+
+The Korean Professionals Network In Community (PKNIC), in collaboration with the San Francisco Korean Consulate, is excited to announce a free workshop designed to help you thrive in the evolving job market of 2026. This is a fantastic opportunity to gain valuable insights and practical skills to boost your career prospects. Read on for all the details!
+
+**Workshop Overview**
+
+This workshop will equip you with the knowledge and tools necessary to navigate the challenges and opportunities of the future job landscape. We'll cover crucial topics such as crafting AI-proof resumes, understanding visa options, and leveraging LinkedIn for career advancement.
+
+*   **Date:** December 13th
+*   **Time:** 2:00 PM
+*   **Location:** 995 Market St, San Francisco
+*   **Capacity:** Limited to 30 attendees
+*   **Requirement:** Participants are required to bring their own laptops.
+
+**What You'll Learn**
+
+This workshop is packed with actionable strategies and expert advice. Here’s a breakdown of what you can expect:
+
+*   **Creating AI-Proof Resumes:**
+
+    *   Learn how to optimize your resume to stand out to both human recruiters and AI-powered applicant tracking systems (ATS).
+    *   Discover the key elements of a modern resume that effectively showcase your skills and experience.
+    *   Understand the importance of using relevant keywords and quantifiable achievements.
+
+*   **Navigating H-1B and OPT Challenges:**
+
+    *   Gain insights into the latest updates and potential changes to the H-1B visa and OPT programs.
+    *   Learn strategies for successfully navigating the application process.
+    *   Understand your rights and responsibilities as an H-1B or OPT visa holder.
+
+*   **Turning LinkedIn Connections into Job Referrals:**
+
+    *   Master the art of networking on LinkedIn to build meaningful connections with industry professionals.
+    *   Learn how to effectively communicate your career goals and request referrals.
+    *   Discover strategies for leveraging LinkedIn to research companies and identify potential job opportunities.
+
+**Bonus Opportunity: Free Career Coaching Sessions**
+
+As an added bonus, three lucky participants will receive free 1-on-1 career coaching sessions! This is an invaluable opportunity to receive personalized guidance and support from experienced career coaches.
+
+**How to Secure Your Spot**
+
+Given the limited capacity of 30 attendees, we encourage you to sign up as soon as possible to secure your spot. Registration details will be shared in the comments below.
+
+**💻 What to Bring:**
+
+Don't forget to bring your laptop! This workshop is designed to be interactive, and you'll need your laptop to participate fully in the exercises and activities.
+
+**Community Engagement**
+
+*   **Share Your Thoughts:** What are your biggest career concerns for 2026? Share your thoughts in the comments below!
+*   **Connect with Others:** Use this opportunity to connect with other members of the community who are also attending the workshop. Introduce yourself and share your career goals.
+*   **Ask Questions:** Don't hesitate to ask questions before, during, and after the workshop. We're here to support you on your career journey!
+
+We look forward to seeing you there and helping you achieve career success in 2026! Please RSVP below so we can get an accurate headcount!
+</pre>
+            </div>
+
+        </div>
+
+        <div class="test-card failed">
+            <div class="test-header">
+                <div class="test-title">
+                    <h2>kakaotalk_urgent_update</h2>
+                    <div>
+                        <span class="platform">kakaotalk</span>
+                        <span class="description">Urgent update for Kakaotalk</span>
+                    </div>
+                </div>
+                <span class="status-badge failed">FAILED</span>
+            </div>
+            
+            <div class="overall-score">
+                <span class="score-label">Overall Score</span>
+                <span class="score-value">100/100</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill " style="width: 100.0%"></div>
+            </div>
+            
+            <div class="criteria-grid">
+
+                <div class="criterion passed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">length</span>
+                        <span class="criterion-score">100/100</span>
+                    </div>
+                    <div class="criterion-message">✓ Sentence count (3) is within limit (max 3)</div>
+
+                    <div class="criterion-details">
+
+                        <div class="detail-item">
+                            <div class="detail-label">Expected</div>
+                            <div class="detail-value">Maximum 3 sentences</div>
+                        </div>
+
+                        <div class="detail-item">
+                            <div class="detail-label">Actual</div>
+                            <div class="detail-value">3</div>
+                        </div>
+
+                    </div>
+
+                    <div class="suggestion">Perfect brevity for Kakaotalk!</div>
+
+                </div>
+
+                <div class="criterion failed">
+                    <div class="criterion-header">
+                        <span class="criterion-name">tone</span>
+                        <span class="criterion-score">N/A</span>
+                    </div>
+                    <div class="criterion-message">✗ Lacks direct tone (found only 1 indicators)</div>
+
+                </div>
+
+            </div>
+
+            <div class="generated-content">
+                <h4>Generated Content</h4>
+                <pre>Hey! 👋 Meetup's moved to Building B, Room 301. See ya tonight at 7!
+</pre>
+            </div>
+
+        </div>
+
+    </div>
+</body>
+</html>

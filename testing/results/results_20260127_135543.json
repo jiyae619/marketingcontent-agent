@@ -1,0 +1,115 @@
+{
+  "timestamp": "20260127_135543",
+  "total_tests": 8,
+  "passed_tests": 0,
+  "results": [
+    {
+      "test_id": "linkedin_tech_announcement",
+      "platform": "linkedin",
+      "description": "Tech product announcement for LinkedIn",
+      "input": "We're excited to announce the launch of our new AI-powered analytics platform. This tool helps businesses make data-driven decisions faster and more accurately. Key features include real-time dashboards, predictive analytics, and seamless integration with existing tools.",
+      "generated_content": "Struggling to turn data into actionable insights?\n\nOur new AI-powered analytics platform is here to change that. Get ready to make data-driven decisions faster and more accurately than ever before.\n\nKey features include:\n* Real-time dashboards for instant visibility\n* Predictive analytics to anticipate future trends\n* Seamless integration with your existing tools\n\nReady to unlock the power of your data? Visit our website to learn more and request a demo!\n\n#AIAnalytics #DataDrivenDecisions #BusinessIntelligence #PredictiveAnalytics #Innovation\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 549 characters (minimum: 1300)",
+          "score": 549
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Professional tone detected (indicators: insight, innovation)",
+          "score": null
+        },
+        {
+          "criterion": "format",
+          "passed": true,
+          "message": "\u2713 Has proper paragraph structure (5 paragraphs)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "instagram_event_promo",
+      "platform": "instagram",
+      "description": "Event promotion for Instagram",
+      "status": "FAILED",
+      "error": "AI Prompt section not found in docs/instagram.md",
+      "criteria_results": []
+    },
+    {
+      "test_id": "circle_career_workshop",
+      "platform": "circle",
+      "description": "Community workshop announcement for CIRCLE",
+      "status": "FAILED",
+      "error": "AI Prompt section not found in docs/circle.md",
+      "criteria_results": []
+    },
+    {
+      "test_id": "kakaotalk_quick_reminder",
+      "platform": "kakaotalk",
+      "description": "Quick event reminder for Kakaotalk",
+      "status": "FAILED",
+      "error": "AI Prompt section not found in docs/kakaotalk.md",
+      "criteria_results": []
+    },
+    {
+      "test_id": "linkedin_thought_leadership",
+      "platform": "linkedin",
+      "description": "Thought leadership post for LinkedIn",
+      "input": "The future of work is being reshaped by AI and automation. Companies that embrace these technologies while maintaining human-centered values will thrive. Here's what leaders need to know about building AI-ready teams and fostering innovation in the workplace.",
+      "generated_content": "Is your company ready for the AI revolution? \ud83e\udd16\n\nAI & automation are reshaping the future of work. Leaders must prioritize human-centered values while embracing these powerful technologies.\n\nKey considerations:\n*   Build AI-ready teams with continuous learning opportunities.\n*   Foster a culture of innovation that encourages experimentation.\n*   Focus on upskilling and reskilling initiatives.\n\nHow are you preparing your team for the age of AI? Share your strategies below! \ud83d\udc47\n\n#AI #FutureofWork #Innovation #Leadership #Automation\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 533 characters (minimum: 1300)",
+          "score": 533
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Professional tone detected (indicators: leadership, innovation)",
+          "score": null
+        },
+        {
+          "criterion": "format",
+          "passed": true,
+          "message": "\u2713 Has proper paragraph structure (5 paragraphs)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "instagram_community_highlight",
+      "platform": "instagram",
+      "description": "Community highlight for Instagram",
+      "status": "FAILED",
+      "error": "AI Prompt section not found in docs/instagram.md",
+      "criteria_results": []
+    },
+    {
+      "test_id": "circle_free_event",
+      "platform": "circle",
+      "description": "Free in-person event for CIRCLE",
+      "status": "FAILED",
+      "error": "AI Prompt section not found in docs/circle.md",
+      "criteria_results": []
+    },
+    {
+      "test_id": "kakaotalk_urgent_update",
+      "platform": "kakaotalk",
+      "description": "Urgent update for Kakaotalk",
+      "status": "FAILED",
+      "error": "AI Prompt section not found in docs/kakaotalk.md",
+      "criteria_results": []
+    }
+  ]
+}

@@ -1,0 +1,279 @@
+{
+  "timestamp": "2026-01-27 14:29:52",
+  "total_tests": 8,
+  "passed_tests": 1,
+  "results": [
+    {
+      "test_id": "linkedin_tech_announcement",
+      "platform": "linkedin",
+      "description": "Tech product announcement for LinkedIn",
+      "input": "We're excited to announce the launch of our new AI-powered analytics platform. This tool helps businesses make data-driven decisions faster and more accurately. Key features include real-time dashboards, predictive analytics, and seamless integration with existing tools.",
+      "generated_content": "Struggling to turn data into actionable insights?\n\nOur new AI-powered analytics platform is here to revolutionize your decision-making process.\n\n\u2705 Real-time dashboards for instant visibility.\n\u2705 Predictive analytics to anticipate future trends.\n\u2705 Seamless integration with your current systems.\n\nReady to unlock the power of data?\n\nLearn more and request a demo today! [link]\n\n#AI #Analytics #DataDriven #BusinessIntelligence #Innovation\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "overall_score": 61.205128205128204,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 437 characters (minimum: 1300)",
+          "score": 33.61538461538461,
+          "suggestion": "Add 863 more characters (66% too short). Consider expanding on key points, adding examples, or including more detail.",
+          "actual": 437,
+          "expected": "1300-1500 characters"
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Professional tone detected (2 indicators: insight, innovation)",
+          "score": 50,
+          "suggestion": "Good professional tone. Consider adding more industry-specific terms.",
+          "actual": "2 professional indicators",
+          "expected": "At least 2 professional indicators"
+        },
+        {
+          "criterion": "format",
+          "passed": true,
+          "message": "\u2713 Excellent paragraph structure (6 paragraphs)",
+          "score": 100,
+          "suggestion": "Great formatting with clear paragraph breaks!",
+          "actual": "6 paragraphs",
+          "expected": "At least 2-3 paragraphs"
+        }
+      ]
+    },
+    {
+      "test_id": "instagram_event_promo",
+      "platform": "instagram",
+      "description": "Event promotion for Instagram",
+      "input": "Join us for our annual tech conference on March 15th! Network with industry leaders, attend workshops, and discover the latest innovations. Early bird tickets available now.",
+      "generated_content": "Techies, mark your calendars! \ud83d\uddd3\ufe0f Our annual tech conference is BACK on March 15th, and you definitely don't want to miss this.\n\nGet ready to dive deep into the latest innovations, network with some seriously impressive industry leaders, and level up your skills in our hands-on workshops. It's the perfect opportunity to connect, learn, and get inspired. \u2728\n\nWe're talking cutting-edge insights, game-changing discussions, and a whole lot of fun. \ud83e\udd73 Plus, snag your early bird tickets now to save some \ud83d\udcb0! Let's innovate together! \ud83d\ude80\n\nLink in bio for tickets and more info. See you there!\n\n#techconference #innovation #networking #techcommunity #earlybird #workshops #pknic #\ud53c\ud06c\ub2c9\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "overall_score": 84.0,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 105 words (minimum: 125)",
+          "score": 84.0,
+          "suggestion": "Add 20 more words (16% too short). Expand with more details or examples.",
+          "actual": 105,
+          "expected": "125-150 words"
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Casual/engaging tone detected (6 indicators)",
+          "score": null
+        },
+        {
+          "criterion": "emojis",
+          "passed": true,
+          "message": "\u2713 Contains 5 emoji(s)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "circle_career_workshop",
+      "platform": "circle",
+      "description": "Community workshop announcement for CIRCLE",
+      "input": "PKNIC is hosting a career development workshop focused on resume building and interview skills for tech professionals. The workshop will cover AI-optimized resumes, networking strategies, and mock interviews. Free for community members. Saturday, February 10th at 2 PM PST.",
+      "generated_content": "PKNIC Career Development Workshop: Level Up Your Tech Career \ud83d\ude80\n\nHello PKNIC community!\n\nWe're excited to announce an upcoming opportunity to enhance your career prospects with our exclusive Career Development Workshop, focusing on resume building and interview skills tailored for tech professionals. This free workshop is designed to equip you with the latest strategies and techniques to stand out in today's competitive job market. Mark your calendars!\n\n**Workshop Details:**\n\n*   **Topic:** Career Development Workshop: Resume Building & Interview Skills for Tech Professionals\n*   **Date:** Saturday, February 10th\n*   **Time:** 2:00 PM PST\n*   **Cost:** Free for PKNIC Community Members\n\n**What You'll Learn:**\n\nThis workshop will be packed with actionable insights and practical exercises, covering key aspects of the job application and interview process. Here's a breakdown of what you can expect:\n\n*   **Crafting an AI-Optimized Resume:**\n    *   Understand how Applicant Tracking Systems (ATS) work and how to optimize your resume for them.\n    *   Learn to identify relevant keywords and incorporate them strategically into your resume.\n    *   Discover tools and resources for creating visually appealing and impactful resumes.\n*   **Networking Strategies for Tech Professionals:**\n    *   Effective techniques for building and maintaining professional relationships.\n    *   Leveraging online platforms like LinkedIn to expand your network.\n    *   Attending industry events and conferences to meet potential employers and collaborators.\n*   **Mastering the Interview: Mock Interviews and Feedback:**\n    *   Participate in realistic mock interviews simulating common tech interview scenarios.\n    *   Receive personalized feedback on your performance, including areas for improvement.\n    *   Learn strategies for answering behavioral questions, technical questions, and salary negotiation.\n\n**Why Attend?**\n\n*   **Stay Ahead of the Curve:** Learn the latest trends in resume building and interview techniques, including the use of AI and other advanced technologies.\n*   **Gain Practical Skills:** Participate in hands-on exercises and receive personalized feedback to improve your job application and interview performance.\n*   **Network with Fellow Professionals:** Connect with other PKNIC community members and build valuable relationships that can help you advance your career.\n*   **Boost Your Confidence:** Prepare for your next job interview with confidence, knowing that you have the skills and knowledge to succeed.\n\n**Preparation:**\n\nTo make the most of this workshop, we recommend that you bring a copy of your current resume (digital or print) and be prepared to actively participate in the mock interview sessions.\n\n**Community Engagement:**\n\nWe want to make this workshop as valuable as possible for our community. Please share your questions and topics you'd like to see covered in the comments below! What are your biggest challenges when it comes to resume building and interviewing? What are you hoping to get out of this workshop?\n\nWe encourage you to share this opportunity with other tech professionals who may benefit from it. Let\u2019s help each other level up our careers!\n",
+      "status": "FAILED",
+      "passed_criteria": 1,
+      "total_criteria": 3,
+      "overall_score": 91.4,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 457 words (minimum: 500)",
+          "score": 91.4,
+          "suggestion": "Add 43 more words (9% too short). Include more details, examples, or expand sections.",
+          "actual": 457,
+          "expected": "500-800 words"
+        },
+        {
+          "criterion": "structure",
+          "passed": false,
+          "message": "Structure check: title \u2717, headers \u2717, engagement \u2713",
+          "score": null
+        },
+        {
+          "criterion": "formatting",
+          "passed": true,
+          "message": "\u2713 Has bullet points and emojis",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "kakaotalk_quick_reminder",
+      "platform": "kakaotalk",
+      "description": "Quick event reminder for Kakaotalk",
+      "input": "Don't forget! Our networking event is tomorrow at 6 PM. Register now to secure your spot. Limited seats available.",
+      "generated_content": "Hey! Networking event tomorrow at 6 PM \u2013 don't miss it! \ud83d\ude09 Register now to grab a spot before they're gone. See you there!\n",
+      "status": "FAILED",
+      "passed_criteria": 1,
+      "total_criteria": 2,
+      "overall_score": 70.0,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too many sentences: 4 (maximum: 3)",
+          "score": 70,
+          "suggestion": "Remove 1 sentence(s). Combine ideas or remove less critical information.",
+          "actual": 4,
+          "expected": "Maximum 3 sentences"
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Direct/conversational tone detected (5 indicators)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "linkedin_thought_leadership",
+      "platform": "linkedin",
+      "description": "Thought leadership post for LinkedIn",
+      "input": "The future of work is being reshaped by AI and automation. Companies that embrace these technologies while maintaining human-centered values will thrive. Here's what leaders need to know about building AI-ready teams and fostering innovation in the workplace.",
+      "generated_content": "Is your company prepared for the AI revolution? \ud83e\udd16\n\nAI & automation are no longer futuristic concepts\u2014they're actively reshaping the workplace. Leaders must prioritize building AI-ready teams equipped to leverage these technologies. This involves:\n\n*   Upskilling current employees to work alongside AI.\n*   Recruiting talent with expertise in AI and related fields.\n*   Fostering a culture of innovation that encourages experimentation.\n\nCompanies that embrace AI while staying human-centered will be the future's success stories.\n\nWhat strategies are you using to prepare your team? Share your thoughts below! \ud83d\udc47\n\n#AI #FutureofWork #Leadership #Innovation #Automation\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "overall_score": 75.46153846153847,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 668 characters (minimum: 1300)",
+          "score": 51.38461538461539,
+          "suggestion": "Add 632 more characters (49% too short). Consider expanding on key points, adding examples, or including more detail.",
+          "actual": 668,
+          "expected": "1300-1500 characters"
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Professional tone detected (4 indicators: expertise, leadership, innovation)",
+          "score": 75,
+          "suggestion": "Excellent professional tone!",
+          "actual": "4 professional indicators",
+          "expected": "At least 2 professional indicators"
+        },
+        {
+          "criterion": "format",
+          "passed": true,
+          "message": "\u2713 Excellent paragraph structure (6 paragraphs)",
+          "score": 100,
+          "suggestion": "Great formatting with clear paragraph breaks!",
+          "actual": "6 paragraphs",
+          "expected": "At least 2-3 paragraphs"
+        }
+      ]
+    },
+    {
+      "test_id": "instagram_community_highlight",
+      "platform": "instagram",
+      "description": "Community highlight for Instagram",
+      "input": "Shoutout to our amazing community members who participated in last week's hackathon! Your creativity and innovation continue to inspire us. Check out the winning projects on our website.",
+      "generated_content": "What an incredible week it's been! \ud83e\udd29 Still buzzing from the energy of last week's hackathon and wanted to give a massive shoutout to everyone who participated. Seriously, your talent and passion blew us away!\n\nIt's so inspiring to witness the creative ideas that come from our community. You all brought your A-game, and the projects were absolutely mind-blowing. Each submission was super unique, and it made selecting the winners extra tough! \ud83c\udfc6\n\nWe're so proud to have such innovative and dedicated individuals as part of our community. If you haven't already, head over to our website to check out the winning projects. Prepare to be amazed! \ud83d\ude09 Let us know which one is your favorite in the comments below! \ud83d\udc47\n\n#hackathon #communitylove #innovation #techcommunity #webdev #pknic #\ud53c\ud06c\ub2c9 #codinglife\n",
+      "status": "PASSED",
+      "passed_criteria": 3,
+      "total_criteria": 3,
+      "overall_score": 100.0,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": true,
+          "message": "\u2713 Word count (129) is within optimal range (125-150)",
+          "score": 100,
+          "suggestion": "Perfect length for Instagram engagement!",
+          "actual": 129,
+          "expected": "125-150 words"
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Casual/engaging tone detected (7 indicators)",
+          "score": null
+        },
+        {
+          "criterion": "emojis",
+          "passed": true,
+          "message": "\u2713 Contains 4 emoji(s)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "circle_free_event",
+      "platform": "circle",
+      "description": "Free in-person event for CIRCLE",
+      "input": "PKNIC x San Francisco Korean Consulate presents: Career Success in 2026. Learn how to create AI-proof resumes, navigate H-1B and OPT challenges, and turn LinkedIn connections into job referrals. Free workshop with laptop required. December 13th, 2 PM at 995 Market St, San Francisco. Limited to 30 attendees. Bonus: 3 lucky participants will receive free 1-on-1 career coaching sessions.",
+      "generated_content": "**PKNIC X San Francisco Korean Consulate: Career Success in 2026 Workshop**\n\n\ud83d\udc4b Hello everyone!\n\nThe Korean Professionals Network In Community (PKNIC), in collaboration with the San Francisco Korean Consulate, is excited to announce a free workshop designed to help you thrive in the evolving job market of 2026. This is a fantastic opportunity to gain valuable insights and practical skills to boost your career prospects. Read on for all the details!\n\n**Workshop Overview**\n\nThis workshop will equip you with the knowledge and tools necessary to navigate the challenges and opportunities of the future job landscape. We'll cover crucial topics such as crafting AI-proof resumes, understanding visa options, and leveraging LinkedIn for career advancement.\n\n*   **Date:** December 13th\n*   **Time:** 2:00 PM\n*   **Location:** 995 Market St, San Francisco\n*   **Capacity:** Limited to 30 attendees\n*   **Requirement:** Participants are required to bring their own laptops.\n\n**What You'll Learn**\n\nThis workshop is packed with actionable strategies and expert advice. Here\u2019s a breakdown of what you can expect:\n\n*   **Creating AI-Proof Resumes:**\n\n    *   Learn how to optimize your resume to stand out to both human recruiters and AI-powered applicant tracking systems (ATS).\n    *   Discover the key elements of a modern resume that effectively showcase your skills and experience.\n    *   Understand the importance of using relevant keywords and quantifiable achievements.\n\n*   **Navigating H-1B and OPT Challenges:**\n\n    *   Gain insights into the latest updates and potential changes to the H-1B visa and OPT programs.\n    *   Learn strategies for successfully navigating the application process.\n    *   Understand your rights and responsibilities as an H-1B or OPT visa holder.\n\n*   **Turning LinkedIn Connections into Job Referrals:**\n\n    *   Master the art of networking on LinkedIn to build meaningful connections with industry professionals.\n    *   Learn how to effectively communicate your career goals and request referrals.\n    *   Discover strategies for leveraging LinkedIn to research companies and identify potential job opportunities.\n\n**Bonus Opportunity: Free Career Coaching Sessions**\n\nAs an added bonus, three lucky participants will receive free 1-on-1 career coaching sessions! This is an invaluable opportunity to receive personalized guidance and support from experienced career coaches.\n\n**How to Secure Your Spot**\n\nGiven the limited capacity of 30 attendees, we encourage you to sign up as soon as possible to secure your spot. Registration details will be shared in the comments below.\n\n**\ud83d\udcbb What to Bring:**\n\nDon't forget to bring your laptop! This workshop is designed to be interactive, and you'll need your laptop to participate fully in the exercises and activities.\n\n**Community Engagement**\n\n*   **Share Your Thoughts:** What are your biggest career concerns for 2026? Share your thoughts in the comments below!\n*   **Connect with Others:** Use this opportunity to connect with other members of the community who are also attending the workshop. Introduce yourself and share your career goals.\n*   **Ask Questions:** Don't hesitate to ask questions before, during, and after the workshop. We're here to support you on your career journey!\n\nWe look forward to seeing you there and helping you achieve career success in 2026! Please RSVP below so we can get an accurate headcount!\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "overall_score": 100.0,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": true,
+          "message": "\u2713 Word count (506) is within optimal range (500-800)",
+          "score": 100,
+          "suggestion": "Perfect length for CIRCLE community posts!",
+          "actual": 506,
+          "expected": "500-800 words"
+        },
+        {
+          "criterion": "structure",
+          "passed": false,
+          "message": "Structure check: title \u2717, headers \u2717, engagement \u2713",
+          "score": null
+        },
+        {
+          "criterion": "formatting",
+          "passed": true,
+          "message": "\u2713 Has bullet points and emojis",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "kakaotalk_urgent_update",
+      "platform": "kakaotalk",
+      "description": "Urgent update for Kakaotalk",
+      "input": "Venue change! Tonight's meetup is now at Building B, Room 301. See you at 7 PM!",
+      "generated_content": "Hey! \ud83d\udc4b Meetup's moved to Building B, Room 301. See ya tonight at 7!\n",
+      "status": "FAILED",
+      "passed_criteria": 1,
+      "total_criteria": 2,
+      "overall_score": 100.0,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": true,
+          "message": "\u2713 Sentence count (3) is within limit (max 3)",
+          "score": 100,
+          "suggestion": "Perfect brevity for Kakaotalk!",
+          "actual": 3,
+          "expected": "Maximum 3 sentences"
+        },
+        {
+          "criterion": "tone",
+          "passed": false,
+          "message": "\u2717 Lacks direct tone (found only 1 indicators)",
+          "score": null
+        }
+      ]
+    }
+  ]
+}

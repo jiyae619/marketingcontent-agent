@@ -1,0 +1,235 @@
+{
+  "timestamp": "20260127_135915",
+  "total_tests": 8,
+  "passed_tests": 1,
+  "results": [
+    {
+      "test_id": "linkedin_tech_announcement",
+      "platform": "linkedin",
+      "description": "Tech product announcement for LinkedIn",
+      "input": "We're excited to announce the launch of our new AI-powered analytics platform. This tool helps businesses make data-driven decisions faster and more accurately. Key features include real-time dashboards, predictive analytics, and seamless integration with existing tools.",
+      "generated_content": "Struggling to turn data into actionable insights?\n\nOur new AI-powered analytics platform is here to revolutionize your decision-making process.\n\nKey features:\n* Real-time dashboards for instant visibility.\n* Predictive analytics to anticipate future trends.\n* Seamless integration to streamline your workflow.\n\nReady to unlock the power of data?\n\nLearn more and request a demo today!\n\n#AIAnalytics #DataDriven #BusinessIntelligence #Innovation #DataScience\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 457 characters (minimum: 1300)",
+          "score": 457
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Professional tone detected (indicators: insight, innovation)",
+          "score": null
+        },
+        {
+          "criterion": "format",
+          "passed": true,
+          "message": "\u2713 Has proper paragraph structure (6 paragraphs)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "instagram_event_promo",
+      "platform": "instagram",
+      "description": "Event promotion for Instagram",
+      "input": "Join us for our annual tech conference on March 15th! Network with industry leaders, attend workshops, and discover the latest innovations. Early bird tickets available now.",
+      "generated_content": "Tech enthusiasts, mark your calendars! \ud83d\uddd3\ufe0f Our annual tech conference is coming up on March 15th, and you won't want to miss it.\n\nGet ready to connect with the brightest minds in the industry, dive deep into hands-on workshops, and explore the groundbreaking innovations that are shaping our future. \ud83d\udca1 It's the perfect opportunity to expand your knowledge, make valuable connections, and stay ahead of the curve.\n\nEarly bird tickets are up for grabs now, so snag yours before they're gone! Let's innovate and inspire together. \ud83d\ude4c\n\nClick the link in bio to register! \ud83d\ude09\n\n#techconference #innovation #networking #earlybird #technology #pknic #\ud53c\ud06c\ub2c9 #tech",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 103 words (minimum: 125)",
+          "score": 103
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Casual/engaging tone detected (5 indicators)",
+          "score": null
+        },
+        {
+          "criterion": "emojis",
+          "passed": true,
+          "message": "\u2713 Contains 5 emoji(s)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "circle_career_workshop",
+      "platform": "circle",
+      "description": "Community workshop announcement for CIRCLE",
+      "input": "PKNIC is hosting a career development workshop focused on resume building and interview skills for tech professionals. The workshop will cover AI-optimized resumes, networking strategies, and mock interviews. Free for community members. Saturday, February 10th at 2 PM PST.",
+      "generated_content": "PKNIC Career Development Workshop: Level Up Your Tech Career!\n\nHello PKNIC Community! \ud83d\udc4b\n\nWe're excited to announce a valuable opportunity to enhance your career prospects in the tech industry. PKNIC is hosting a free career development workshop designed to equip you with the essential tools and strategies for success. Whether you're actively seeking a new role or aiming to advance in your current one, this workshop will provide practical insights and hands-on experience.\n\n**What You'll Learn:**\n\nThis workshop will be held on **Saturday, February 10th, at 2 PM PST.** It\u2019s completely **free** for all PKNIC community members! Here\u2019s a breakdown of what we\u2019ll cover:\n\n*   **AI-Optimized Resumes:**\n    *   Understanding the role of AI in resume screening.\n    *   Identifying relevant keywords and incorporating them effectively.\n    *   Structuring your resume for optimal AI readability.\n    *   Using tools and resources for AI resume optimization.\n*   **Networking Strategies:**\n    *   Building a strong professional network.\n    *   Leveraging LinkedIn for career advancement.\n    *   Attending industry events and conferences effectively.\n    *   Crafting a compelling elevator pitch.\n*   **Mock Interviews:**\n    *   Practicing common interview questions.\n    *   Receiving constructive feedback on your interviewing skills.\n    *   Learning techniques for handling difficult questions.\n    *   Understanding the STAR method for answering behavioral questions.\n\n**Why You Should Attend:**\n\n*   **Gain Practical Skills:** Learn actionable strategies to improve your resume, networking abilities, and interview performance.\n*   **Expert Guidance:** Benefit from the knowledge and experience of industry professionals.\n*   **Community Support:** Connect with fellow tech professionals and expand your network.\n*   **Free of Charge:** This valuable workshop is offered completely free to PKNIC community members.\n\n**Workshop Details:**\n\n*   **Date:** Saturday, February 10th\n*   **Time:** 2:00 PM PST\n*   **Location:** [Insert location if in-person, or \"Online via [Platform]\" if online]\n*   **Cost:** Free for PKNIC Community Members\n\n**How to Prepare:**\n\n*   Come prepared with a copy of your current resume (digital or physical).\n*   Think about your career goals and the types of roles you're interested in.\n*   Be ready to actively participate in the mock interview sessions.\n*   Bring a willingness to learn and connect with your fellow community members.\n\n**Community Engagement:**\n\nWe encourage you to actively participate and engage with the PKNIC community both before and after the workshop.\n\n*   **Pre-Workshop Discussion:** Share your biggest career challenges in the comments below. What are you hoping to gain from this workshop?\n*   **Post-Workshop Feedback:** After attending the workshop, share your key takeaways and how you plan to implement what you've learned.\n*   **Networking:** Connect with other attendees on LinkedIn and continue the conversation beyond the workshop.\n\nWe believe this workshop will be an invaluable resource for our community members. We look forward to seeing you there and supporting your career journey! Let us know if you have any questions!\n",
+      "status": "FAILED",
+      "passed_criteria": 1,
+      "total_criteria": 3,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 454 words (minimum: 500)",
+          "score": 454
+        },
+        {
+          "criterion": "structure",
+          "passed": false,
+          "message": "Structure check: title \u2717, headers \u2717, engagement \u2713",
+          "score": null
+        },
+        {
+          "criterion": "formatting",
+          "passed": true,
+          "message": "\u2713 Has bullet points and emojis",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "kakaotalk_quick_reminder",
+      "platform": "kakaotalk",
+      "description": "Quick event reminder for Kakaotalk",
+      "input": "Don't forget! Our networking event is tomorrow at 6 PM. Register now to secure your spot. Limited seats available.",
+      "generated_content": "Hey! Networking event tomorrow at 6 PM \u2013 don't miss out! \ud83d\ude09 Register now before spots fill up. See you there!\n",
+      "status": "FAILED",
+      "passed_criteria": 1,
+      "total_criteria": 2,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too many sentences: 4 (maximum: 3)",
+          "score": 4
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Direct/conversational tone detected (5 indicators)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "linkedin_thought_leadership",
+      "platform": "linkedin",
+      "description": "Thought leadership post for LinkedIn",
+      "input": "The future of work is being reshaped by AI and automation. Companies that embrace these technologies while maintaining human-centered values will thrive. Here's what leaders need to know about building AI-ready teams and fostering innovation in the workplace.",
+      "generated_content": "Is your company prepared for the AI revolution? \ud83e\udd16\n\nAI and automation are no longer futuristic concepts; they're reshaping the workplace *now*. Leaders must prioritize building AI-ready teams and cultivating a culture of innovation.\n\n\u27a1\ufe0f Upskill your workforce: Equip your employees with the skills to collaborate with AI, not compete against it.\n\u27a1\ufe0f Foster a culture of experimentation: Encourage teams to explore AI applications and share their learnings.\n\u27a1\ufe0f Prioritize ethical AI: Ensure fairness, transparency, and accountability in your AI implementations.\n\nHow is your organization adapting to the changing landscape? Share your thoughts below! \ud83d\udc47\n\n#AI #FutureOfWork #Leadership #Innovation #Automation\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 705 characters (minimum: 1300)",
+          "score": 705
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Professional tone detected (indicators: leadership, innovation)",
+          "score": null
+        },
+        {
+          "criterion": "format",
+          "passed": true,
+          "message": "\u2713 Has proper paragraph structure (5 paragraphs)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "instagram_community_highlight",
+      "platform": "instagram",
+      "description": "Community highlight for Instagram",
+      "input": "Shoutout to our amazing community members who participated in last week's hackathon! Your creativity and innovation continue to inspire us. Check out the winning projects on our website.",
+      "generated_content": "Wow, last week's hackathon was seriously next level! \ud83e\udd29 A massive shoutout to everyone who poured their heart and soul into creating some truly mind-blowing projects. We were absolutely buzzing with all the creativity and innovative spirit! \ud83d\ude4c\n\nIt's moments like these that remind us how lucky we are to have such an incredible community. You guys constantly push the boundaries and inspire us to think bigger. \ud83d\ude4f Thank you for making it such a success!\n\nWant to see the winning projects and get inspired? Head over to the link in our bio to check them out. \ud83d\ude09 Let us know which one is your fave in the comments below! \ud83d\udc47\n\n#hackathon #communitylove #innovation #tech #developers #pknic #\ud53c\ud06c\ub2c9 #coding\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": false,
+          "message": "\u2717 Too short: 119 words (minimum: 125)",
+          "score": 119
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Casual/engaging tone detected (7 indicators)",
+          "score": null
+        },
+        {
+          "criterion": "emojis",
+          "passed": true,
+          "message": "\u2713 Contains 5 emoji(s)",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "circle_free_event",
+      "platform": "circle",
+      "description": "Free in-person event for CIRCLE",
+      "input": "PKNIC x San Francisco Korean Consulate presents: Career Success in 2026. Learn how to create AI-proof resumes, navigate H-1B and OPT challenges, and turn LinkedIn connections into job referrals. Free workshop with laptop required. December 13th, 2 PM at 995 Market St, San Francisco. Limited to 30 attendees. Bonus: 3 lucky participants will receive free 1-on-1 career coaching sessions.",
+      "generated_content": "PKNIC X San Francisco Korean Consulate: Career Success in 2026\n\nHey Community! \ud83d\udc4b\n\nWe're excited to share details about an invaluable upcoming workshop, co-organized by PKNIC and the San Francisco Korean Consulate. This is a fantastic opportunity for anyone looking to future-proof their career, especially in the face of rapidly evolving technologies and visa regulations. Read on to learn how you can secure your spot!\n\n**Event Overview: Preparing for Career Success in 2026**\n\nThis workshop is designed to equip you with the knowledge and skills needed to thrive in the job market of the near future. With advancements in AI and ongoing changes in visa policies, it's more important than ever to be proactive and strategic in your career planning. This event will cover:\n\n*   Creating AI-proof resumes that stand out.\n*   Navigating the complexities of H-1B and OPT visa challenges.\n*   Leveraging LinkedIn to build meaningful connections and secure job referrals.\n\n**What You'll Learn:**\n\n*   **Resume Optimization for the AI Age:** Learn how to tailor your resume to highlight your unique skills and experience, ensuring it resonates with both human recruiters and AI screening tools.\n    *   Identifying keywords and skills that are in high demand.\n    *   Structuring your resume for optimal readability by Applicant Tracking Systems (ATS).\n    *   Quantifying your accomplishments to demonstrate your impact.\n\n*   **Mastering H-1B and OPT Visa Navigation:** Gain a comprehensive understanding of the latest H-1B and OPT regulations and learn strategies for successful navigation.\n    *   Understanding eligibility requirements and application timelines.\n    *   Exploring alternative visa options and pathways to permanent residency.\n    *   Accessing resources and support for visa-related questions.\n\n*   **LinkedIn Strategies for Career Advancement:** Unlock the power of LinkedIn to build your professional network, showcase your expertise, and land your dream job.\n    *   Creating a compelling LinkedIn profile that attracts recruiters.\n    *   Building and nurturing connections with industry professionals.\n    *   Actively engaging in LinkedIn groups and discussions.\n    *   Using LinkedIn to find and apply for relevant job openings.\n\n**Event Details:**\n\n*   **Date:** December 13th\n*   **Time:** 2:00 PM\n*   **Location:** 995 Market St, San Francisco\n*   **Requirement:** Please bring your laptop for hands-on activities.\n*   **Space is Limited:** This workshop is limited to 30 attendees to ensure a personalized and interactive experience.\n\n**Bonus Opportunity:**\n\n*   Three lucky participants will receive FREE 1-on-1 career coaching sessions! This is an exclusive opportunity to receive personalized guidance and support from experienced career coaches.\n\n**How to Register:**\n\nGiven the limited capacity, we encourage you to secure your spot as soon as possible. Registration details will follow in the comments below.\n\n**Community Engagement:**\n\nWe believe in the power of community and collaboration. Here's how you can get involved:\n\n*   **Share this post:** Help spread the word by sharing this post with your network. Know someone who could benefit from this workshop? Tag them in the comments!\n*   **Ask questions:** Do you have any questions about the workshop or the topics covered? Post them in the comments below, and we'll do our best to answer them.\n*   **Connect with attendees:** Use the comments section to connect with other attendees and build your network.\n*   **Post your takeaways:** After the workshop, share your key takeaways and insights with the community. Let's learn from each other!\n\nWe look forward to seeing you there and supporting your career success in 2026!\n",
+      "status": "FAILED",
+      "passed_criteria": 2,
+      "total_criteria": 3,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": true,
+          "message": "\u2713 Word count (549) is within range (500-800)",
+          "score": 549
+        },
+        {
+          "criterion": "structure",
+          "passed": false,
+          "message": "Structure check: title \u2717, headers \u2717, engagement \u2713",
+          "score": null
+        },
+        {
+          "criterion": "formatting",
+          "passed": true,
+          "message": "\u2713 Has bullet points and emojis",
+          "score": null
+        }
+      ]
+    },
+    {
+      "test_id": "kakaotalk_urgent_update",
+      "platform": "kakaotalk",
+      "description": "Urgent update for Kakaotalk",
+      "input": "Venue change! Tonight's meetup is now at Building B, Room 301. See you at 7 PM!",
+      "generated_content": "Hey! \ud83d\udc4b Meetup's moved to Building B, Room 301. See you there tonight at 7!\n",
+      "status": "PASSED",
+      "passed_criteria": 2,
+      "total_criteria": 2,
+      "criteria_results": [
+        {
+          "criterion": "length",
+          "passed": true,
+          "message": "\u2713 Sentence count (3) is within limit (max 3)",
+          "score": 3
+        },
+        {
+          "criterion": "tone",
+          "passed": true,
+          "message": "\u2713 Direct/conversational tone detected (2 indicators)",
+          "score": null
+        }
+      ]
+    }
+  ]
+}

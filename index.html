@@ -14,6 +14,11 @@
   <div class="container">
     <!-- Header -->
     <header>
+      <div class="header-background">
+        <div class="bg-blur-1"></div>
+        <div class="bg-blur-2"></div>
+        <div class="bg-blur-3"></div>
+      </div>
       <h1 class="app-title">✨ Marketing Channel Agent</h1>
       <p class="app-subtitle">Transform your content for every platform, intelligently</p>
     </header>
@@ -68,7 +73,7 @@
 
           <div class="action-bar">
             <button class="btn btn-primary" id="generateBtn">
-              <span id="generateBtnText">🚀 Generate for All Platforms</span>
+              <span id="generateBtnText">🚀 Generate Content!</span>
               <span id="generateBtnLoading" class="hidden">
                 <span class="loading-spinner"></span> Generating...
               </span>
@@ -78,87 +83,214 @@
         </div>
       </div>
 
-      <!-- LinkedIn Section -->
-      <div class="platform-grid">
-        <div class="card fade-in platform-card" id="linkedinCard" style="display: none;">
-          <div class="card-header">
-            <h3 class="card-title">
-              <span class="platform-badge platform-linkedin">LinkedIn</span>
-            </h3>
-            <div class="platform-actions">
-              <button class="btn btn-secondary btn-small copy-btn" data-platform="linkedin">
-                📋 Copy
-              </button>
+
+      <!-- Platform Tabs -->
+      <div class="tabs-container">
+        <div class="tabs-nav">
+          <button class="tab-btn active" data-tab="linkedin">
+            <span class="platform-badge platform-linkedin">LinkedIn</span>
+          </button>
+          <button class="tab-btn" data-tab="instagram">
+            <span class="platform-badge platform-instagram">Instagram</span>
+          </button>
+          <button class="tab-btn" data-tab="circle">
+            <span class="platform-badge platform-circle">CIRCLE</span>
+          </button>
+          <button class="tab-btn" data-tab="kakaotalk">
+            <span class="platform-badge platform-kakaotalk">Kakaotalk</span>
+          </button>
+        </div>
+
+        <!-- LinkedIn Tab -->
+        <div class="tab-content active" id="tab-linkedin" data-platform="linkedin">
+          <div class="card fade-in platform-card" id="linkedinCard" style="display: none;">
+            <div class="card-header">
+              <h3 class="card-title">
+                <span class="platform-badge platform-linkedin">LinkedIn</span>
+              </h3>
+              <div class="platform-actions">
+                <button class="btn btn-secondary btn-small copy-btn" data-platform="linkedin">
+                  📋 Copy
+                </button>
+              </div>
             </div>
-          </div>
-          <div class="card-body">
-            <div class="form-group mb-0">
-              <textarea id="linkedinOutput" class="platform-output"
-                placeholder="LinkedIn version will appear here..."></textarea>
-              <div class="char-counter" id="linkedinCounter">0 characters</div>
+            <div class="card-body">
+              <div class="content-columns">
+                <div class="content-editor">
+                  <div class="form-group mb-0">
+                    <label for="linkedinOutput">Generated Content</label>
+                    <textarea id="linkedinOutput" class="platform-output"
+                      placeholder="LinkedIn version will appear here..."></textarea>
+                    <div class="char-counter" id="linkedinCounter">0 characters</div>
+                  </div>
+                </div>
+                <div class="content-preview">
+                  <label class="preview-label">Live Preview</label>
+                  <div class="preview-mockup linkedin-preview">
+                    <div class="linkedin-post">
+                      <div class="linkedin-header">
+                        <div class="linkedin-avatar"></div>
+                        <div class="linkedin-user-info">
+                          <div class="linkedin-name">PKNIC Team</div>
+                          <div class="linkedin-meta">Marketing · 1h</div>
+                        </div>
+                      </div>
+                      <div class="linkedin-content" id="linkedinPreviewContent">
+                        Your generated LinkedIn post will appear here...
+                      </div>
+                      <div class="linkedin-actions">
+                        <div class="linkedin-action">👍 Like</div>
+                        <div class="linkedin-action">💬 Comment</div>
+                        <div class="linkedin-action">🔄 Repost</div>
+                        <div class="linkedin-action">📤 Send</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Instagram Section -->
-        <div class="card fade-in platform-card" id="instagramCard" style="display: none;">
-          <div class="card-header">
-            <h3 class="card-title">
-              <span class="platform-badge platform-instagram">Instagram</span>
-            </h3>
-            <div class="platform-actions">
-              <button class="btn btn-secondary btn-small copy-btn" data-platform="instagram">
-                📋 Copy
-              </button>
+        <!-- Instagram Tab -->
+        <div class="tab-content" id="tab-instagram" data-platform="instagram">
+          <div class="card fade-in platform-card" id="instagramCard" style="display: none;">
+            <div class="card-header">
+              <h3 class="card-title">
+                <span class="platform-badge platform-instagram">Instagram</span>
+              </h3>
+              <div class="platform-actions">
+                <button class="btn btn-secondary btn-small copy-btn" data-platform="instagram">
+                  📋 Copy
+                </button>
+              </div>
             </div>
-          </div>
-          <div class="card-body">
-            <div class="form-group mb-0">
-              <textarea id="instagramOutput" class="platform-output"
-                placeholder="Instagram version will appear here..."></textarea>
-              <div class="char-counter" id="instagramCounter">0 words</div>
+            <div class="card-body">
+              <div class="content-columns">
+                <div class="content-editor">
+                  <div class="form-group mb-0">
+                    <label for="instagramOutput">Generated Content</label>
+                    <textarea id="instagramOutput" class="platform-output"
+                      placeholder="Instagram version will appear here..."></textarea>
+                    <div class="char-counter" id="instagramCounter">0 words</div>
+                  </div>
+                </div>
+                <div class="content-preview">
+                  <label class="preview-label">Live Preview</label>
+                  <div class="preview-mockup instagram-preview">
+                    <div class="instagram-post">
+                      <div class="instagram-header">
+                        <div class="instagram-avatar"></div>
+                        <div class="instagram-username">pknic_official</div>
+                      </div>
+                      <div class="instagram-image"></div>
+                      <div class="instagram-actions">
+                        <div class="instagram-action">❤️</div>
+                        <div class="instagram-action">💬</div>
+                        <div class="instagram-action">📤</div>
+                      </div>
+                      <div class="instagram-likes">1,234 likes</div>
+                      <div class="instagram-caption" id="instagramPreviewContent">
+                        <span class="instagram-username">pknic_official</span>
+                        Your generated Instagram caption will appear here...
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- CIRCLE Section -->
-        <div class="card fade-in platform-card" id="circleCard" style="display: none;">
-          <div class="card-header">
-            <h3 class="card-title">
-              <span class="platform-badge platform-circle">CIRCLE</span>
-            </h3>
-            <div class="platform-actions">
-              <button class="btn btn-secondary btn-small copy-btn" data-platform="circle">
-                📋 Copy
-              </button>
+        <!-- CIRCLE Tab -->
+        <div class="tab-content" id="tab-circle" data-platform="circle">
+          <div class="card fade-in platform-card" id="circleCard" style="display: none;">
+            <div class="card-header">
+              <h3 class="card-title">
+                <span class="platform-badge platform-circle">CIRCLE</span>
+              </h3>
+              <div class="platform-actions">
+                <button class="btn btn-secondary btn-small copy-btn" data-platform="circle">
+                  📋 Copy
+                </button>
+              </div>
             </div>
-          </div>
-          <div class="card-body">
-            <div class="form-group mb-0">
-              <textarea id="circleOutput" class="platform-output"
-                placeholder="CIRCLE version will appear here..."></textarea>
-              <div class="char-counter" id="circleCounter">0 words</div>
+            <div class="card-body">
+              <div class="content-columns">
+                <div class="content-editor">
+                  <div class="form-group mb-0">
+                    <label for="circleOutput">Generated Content</label>
+                    <textarea id="circleOutput" class="platform-output"
+                      placeholder="CIRCLE version will appear here..."></textarea>
+                    <div class="char-counter" id="circleCounter">0 words</div>
+                  </div>
+                </div>
+                <div class="content-preview">
+                  <label class="preview-label">Live Preview</label>
+                  <div class="preview-mockup circle-preview">
+                    <div class="circle-post">
+                      <div class="circle-header">
+                        <div class="circle-avatar"></div>
+                        <div class="circle-user-info">
+                          <div class="circle-name">PKNIC Community</div>
+                          <div class="circle-meta">Posted 2h ago</div>
+                        </div>
+                      </div>
+                      <div class="circle-content" id="circlePreviewContent">
+                        Your generated CIRCLE post will appear here...
+                      </div>
+                      <div class="circle-actions">
+                        <div class="circle-action">👍 Like</div>
+                        <div class="circle-action">💬 Comment</div>
+                        <div class="circle-action">🔗 Share</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Kakaotalk Section -->
-        <div class="card fade-in platform-card" id="kakaotalkCard" style="display: none;">
-          <div class="card-header">
-            <h3 class="card-title">
-              <span class="platform-badge platform-kakaotalk">Kakaotalk</span>
-            </h3>
-            <div class="platform-actions">
-              <button class="btn btn-secondary btn-small copy-btn" data-platform="kakaotalk">
-                📋 Copy
-              </button>
+        <!-- Kakaotalk Tab -->
+        <div class="tab-content" id="tab-kakaotalk" data-platform="kakaotalk">
+          <div class="card fade-in platform-card" id="kakaotalkCard" style="display: none;">
+            <div class="card-header">
+              <h3 class="card-title">
+                <span class="platform-badge platform-kakaotalk">Kakaotalk</span>
+              </h3>
+              <div class="platform-actions">
+                <button class="btn btn-secondary btn-small copy-btn" data-platform="kakaotalk">
+                  📋 Copy
+                </button>
+              </div>
             </div>
-          </div>
-          <div class="card-body">
-            <div class="form-group mb-0">
-              <textarea id="kakaotalkOutput" class="platform-output"
-                placeholder="Kakaotalk version will appear here..."></textarea>
-              <div class="char-counter" id="kakaotalkCounter">0 sentences</div>
+            <div class="card-body">
+              <div class="content-columns">
+                <div class="content-editor">
+                  <div class="form-group mb-0">
+                    <label for="kakaotalkOutput">Generated Content</label>
+                    <textarea id="kakaotalkOutput" class="platform-output"
+                      placeholder="Kakaotalk version will appear here..."></textarea>
+                    <div class="char-counter" id="kakaotalkCounter">0 sentences</div>
+                  </div>
+                </div>
+                <div class="content-preview">
+                  <label class="preview-label">Live Preview</label>
+                  <div class="preview-mockup kakaotalk-preview">
+                    <div class="kakaotalk-chat">
+                      <div class="kakaotalk-date">Today</div>
+                      <div class="kakaotalk-message">
+                        <div class="kakaotalk-sender">PKNIC</div>
+                        <div class="kakaotalk-bubble" id="kakaotalkPreviewContent">
+                          Your generated Kakaotalk message will appear here...
+                        </div>
+                        <div class="kakaotalk-time">3:45 PM</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

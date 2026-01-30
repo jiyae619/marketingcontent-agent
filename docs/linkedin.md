@@ -12,7 +12,7 @@ LinkedIn is a professional networking platform where content should establish th
 - **Authentic**: Show personality while maintaining credibility
 
 ### Technical Specifications
-- **Length**: 1,300-1,500 characters (optimal engagement range)
+- **Length**: 1,000 characters (optimal engagement range)
 - **Hashtags**: 3-5 relevant professional hashtags
 - **Line breaks**: Strategic spacing for readability
 - **Emojis**: Minimal, professional use only
@@ -25,7 +25,7 @@ LinkedIn is a professional networking platform where content should establish th
 
 2. **Body** (Key points)
    - 2-4 main ideas
-   - Use bullet points or numbered lists for clarity
+   - ALWAYS use bullet points or numbered lists for clarity
    - Support claims with data or examples when possible
 
 3. **Call-to-Action**
@@ -37,13 +37,31 @@ LinkedIn is a professional networking platform where content should establish th
 
 You are a professional LinkedIn content strategist. Transform the user's content into an engaging LinkedIn post.
 
-REQUIREMENTS:
-- Professional, authoritative tone
-- Length: 1,300-1,500 characters (aim for engagement sweet spot)
-- Structure: Hook (first line) → Key points → Call-to-action
-- Use 3-5 relevant professional hashtags at the end
-- Strategic line breaks for readability
-- Focus on value delivery and thought leadership
+CRITICAL REQUIREMENTS:
+1. **Language Matching**: ALWAYS write in the SAME language as the input. If input is Korean, output MUST be Korean. If input is English, output MUST be English.
+
+2. **Length**: EXACTLY 1,000 characters (STRICT - count your characters!)
+   - This is a HARD requirement - do NOT submit content shorter than 1,000 characters
+   - Expand with relevant details, examples, context, or insights to meet the minimum
+   - If you're under 1,000 characters, add more value-driven content
+
+3. **Tone**: Professional, authoritative, thought-leadership focused
+
+4. **Structure**: 
+   - Hook (compelling first line)
+   - Key points with details and examples
+   - Call-to-action or discussion prompt
+
+5. **Formatting**:
+   - Use strategic line breaks for readability (create 3-5 paragraphs)
+   - Use bullet points or numbered lists for clarity with subtitles
+   - Use bullet points for location, time, and any logistic details
+   - Add 3-5 relevant professional hashtags at the end
+
+6. **Content Quality**:
+   - Focus on value delivery and insights
+   - Include specific details, data, or examples when possible
+   - Maintain professional credibility
 
 Return ONLY the transformed LinkedIn post, nothing else.
 
@@ -58,24 +76,30 @@ We're launching a new AI tool that helps marketing teams create content faster.
 
 **Output:**
 ```
-The average marketing team spends 16 hours per week on content adaptation. 
-What if you could get that time back?
+Recruiting Opportunity for Companies Hiring in 2026
 
-Today, we're launching an AI-powered solution that's changing the game for 
-multi-channel marketing:
+📌 PKNIC Curated Opportunity
+We’re sharing a recruiting event we believe is especially valuable for founders and hiring managers building early-career pipelines.
+Rice University is hosting a Career Expo & Graduate Talent Mixer in Houston this February—an excellent opportunity to connect with top graduate students and early-career talent.
 
-✓ Platform-specific optimization in seconds
-✓ Maintains your brand voice across channels
-✓ 10x faster content production
+Special thanks to KOTRA Dallas for sharing this opportunity with us. We’re passing it along to the PKNIC founder and operator community.
 
-Early adopters are already seeing dramatic time savings—without sacrificing 
-quality or authenticity.
+📅 Event Details
+Feb 5: Graduate Talent Mixer (Free for employers)
+Feb 6: Career & Internship Expo (USD $650 per booth)
+📍 Location: Rice University, Houston
 
-The future of marketing isn't about working harder. It's about working smarter.
+👥 Who Should Attend
+This event is ideal for founders and hiring managers who want to:
+- Recruit for 2026 full-time or internship roles
+- Build a long-term early-career talent pipeline
+- Network with high-caliber graduate students and recent graduates
 
-What's your biggest content creation challenge?
+🔗 Register here:
+https://lnkd.in/gD7QtGbv
 
-#MarketingAutomation #AITools #ContentStrategy #MarTech #DigitalMarketing
+💬 Questions?
+DM us or comment below. We’re also happy to connect you directly with KOTRA Dallas.
 ```
 
 ### Example 2: Thought Leadership
@@ -87,25 +111,30 @@ AI is changing how we work, but many companies are implementing it wrong.
 
 **Output:**
 ```
-Most companies are getting AI implementation backwards.
+𝗙𝗿𝗼𝗺 𝗦𝗲𝗹𝗳-𝗕𝗿𝗮𝗻𝗱𝗶𝗻𝗴 𝘁𝗼 𝗣𝗿𝗮𝗰𝘁𝗶𝗰𝗮𝗹 𝗧𝗶𝗽𝘀 𝗼𝗳 𝗖𝗮𝗿𝗲𝗲𝗿 𝗗𝗲𝘃𝗲𝗹𝗼𝗽𝗺𝗲𝗻𝘁!! 🚀 
 
-They're asking: "How can AI replace our people?"
-They should be asking: "How can AI amplify our people?"
+On Nov 12th, PKNIC and KOTRA Silicon Valley successfully hosted an online and in-person book talk with Sora Lee.
 
-Here's what we've learned after 6 months of AI integration:
+Sora Lee's talk was not just motivational, but also packed with practical advice. Her insights on receiving feedback, navigating interviews, and negotiating salary were particularly valuable. The lively Q&A session, fueled by active questions, added even more depth to the discussion.
 
-→ AI excels at repetitive, time-consuming tasks
-→ Humans excel at strategy, creativity, and relationships
-→ The magic happens when you combine both
+📌 𝗦𝗼𝗺𝗲 𝗺𝗲𝗺𝗼𝗿𝗮𝗯𝗹𝗲 𝗾𝘂𝗼𝘁𝗲𝘀 𝗮𝗻𝗱 𝗸𝗲𝘆 𝘁𝗮𝗸𝗲𝗮𝘄𝗮𝘆𝘀 𝗳𝗿𝗼𝗺 𝘁𝗵𝗲 𝘀𝗲𝘀𝘀𝗶𝗼𝗻!
+ • Make it easy for someone to sell you. What do people think when they see you? What do you want to be known for?
+ • Don’t try to do everything. Try to outsource as much as possible if you find your time more valuable.
+ • Personal Branding is not just a shiny self-promotion, but a consistent journey of being authentic and confident.
+ 
+We thank everyone who joined us, and we look forward to sharing more meaningful talks in the future! 🙂
 
-The teams seeing the best results aren't replacing humans with AI. They're 
-freeing humans from busywork so they can focus on what they do best.
+And special thanks to Equlib, Dokkaebier, El Jade, and ALLCHADA for their sponsorship, and to KOTRA Silicon Valley for providing the venues.
 
-AI isn't the future of work. Human + AI collaboration is.
+𝗗𝗼𝗻’𝘁 𝗠𝗶𝘀𝘀 𝗦𝗽𝗲𝗰𝗶𝗮𝗹 𝗚𝗶𝗳𝘁𝘀!
+🎁 Please leave a book talk event review on Linkedin or Instagram with PKNIC tag! Through raffles you can get;
+ • Equlib gifts (Eau Calm Pad (100 pads), 4 sets of samples)
+ • and even with a copy of 『너라는 브랜드를 마케팅하라』 with the author's signature! 
 
-What's your experience with AI in the workplace?
+𝗗𝗼𝗻’𝘁 𝗠𝗶𝘀𝘀 𝗨𝗽𝗰𝗼𝗺𝗶𝗻𝗴 𝗘𝘃𝗲𝗻𝘁𝘀 𝘄𝗶𝘁𝗵 𝗣𝗞𝗡𝗜𝗖!
+1. 헤드헌터 Won Park 님의 “대기업 미국 채용 공고 공개 및 추천” 웨비나 (11/20 5PM PST, Online) 👉 https://lnkd.in/gefbZ6hu
 
-#ArtificialIntelligence #FutureOfWork #Leadership #Innovation
+2. 존청 변호사와 함께 그리는 나와 가족을 위한 '미래 금융 지도' (12/6 12PM PST, Dallas TX) 👉 https://lnkd.in/gPVUghbp
 ```
 
 ### Example 3: Industry Insight
@@ -117,24 +146,51 @@ Content marketing ROI is declining because audiences are overwhelmed with conten
 
 **Output:**
 ```
-Content marketing ROI is down 40% year-over-year. Here's why:
+“꿈에 그리던 첫 집 장만. 그 다음은?”
+John Y. Chung 변호사와 함께 그리는 투자 이후 10년 지도
 
-The average person sees 5,000+ marketing messages daily. We're not in a 
-content creation crisis—we're in an attention crisis.
+2025년 11월, 달라스는 ‘전환점’에 섰다.
+인벤토리 53% 급증 | 66% 리스트가 이하 판매 | 렌트비 안정화
+2026년 미국 1위 부동산 시장? (PwC)
 
-The solution isn't more content. It's better content:
+하지만 중요한 것은 투자 결정 이후의 전략적 설계입니다.
 
-• Platform-native formats (not one-size-fits-all)
-• Value-first approach (education over promotion)
-• Authentic voice (people buy from people)
+“투자 결정은 시작일뿐... 투자 구조가 당신의 세금, 법적 보호, 현금흐름, 상속까지 좌우합니다.”
 
-The brands winning right now aren't creating more. They're creating smarter.
+『미국 자산관리 성공 전략』 북토크 4가지 핵심 인사이트
+1️⃣ 투자 소유 구조 설계
+개인 직접투자 vs LLC, 법인 투자 구조
+LLC를 통한 법적 보호 및 채권자 리스크 최소화
+취소불능 트러스트(Irrevocable Trust)를 통한 상속 계획
 
-Quality > Quantity. Every single time.
+2️⃣ 세금 최적화
+법인/개인 소유 시 세금 차이 및 절세 전략
+자산 이전, 상속, 양도 시 과세 영향 분석
 
-How are you adapting your content strategy for 2026?
+3️⃣ 현금흐름 확보 및 리스크 관리
+부동산 및 기타 금융상품을 활용한 현금흐름 확보 전략
+감가상각, 동종자산 교환, Step-up basis를 활용한 투자부동산 절세전략
 
-#ContentMarketing #DigitalStrategy #MarketingROI #B2BMarketing
+4️⃣ 가족 단위 장기 플랜
+자녀 교육, 은퇴, 상속까지 고려한 종합 설계
+
+이런 분들께 강력 추천
+✅ 2025~2026년 부동산 투자 완료 또는 마무리 예정자 
+✅ 렌트비 하락·집값 조정 속 다음 행동 고민 중 
+✅ 부동산·주식·은퇴자금을 통합 설계 원함 
+✅ “LLC는?”, “상속세는?”, “리스크는?” → 현실 조언 필요 
+✅ 자녀에게 안전하게 자산 물려줄 장기 플랜 원함
+
+행사 상세 정보
+일시 | 12월 6일 (토) 오후 2시
+장소 | Hyatt Place Dallas-North
+참가비 | $60 (얼리버드), $80 (Regular), $30 (Online)
+RSVP | https://lnkd.in/gPVUghbp
+
+📩 Inquiries: info@pknic.club
+*Fully refundable until 11/30/2025 11:59 PM (EST). All sales final after this date.
+
+**이번 행사는 Texas Legacy Realty 와 PKNIC이 함께 합니다.
 ```
 
 ## Best Practices

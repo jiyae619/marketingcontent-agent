@@ -108,11 +108,32 @@ function attachEventListeners() {
     });
   });
 
+
   // Character Counters
-  elements.linkedinOutput.addEventListener('input', () => updateCharCounter('linkedin'));
-  elements.instagramOutput.addEventListener('input', () => updateCharCounter('instagram'));
-  elements.circleOutput.addEventListener('input', () => updateCharCounter('circle'));
-  elements.kakaotalkOutput.addEventListener('input', () => updateCharCounter('kakaotalk'));
+  elements.linkedinOutput.addEventListener('input', () => {
+    updateCharCounter('linkedin');
+    updatePreview('linkedin');
+  });
+  elements.instagramOutput.addEventListener('input', () => {
+    updateCharCounter('instagram');
+    updatePreview('instagram');
+  });
+  elements.circleOutput.addEventListener('input', () => {
+    updateCharCounter('circle');
+    updatePreview('circle');
+  });
+  elements.kakaotalkOutput.addEventListener('input', () => {
+    updateCharCounter('kakaotalk');
+    updatePreview('kakaotalk');
+  });
+
+  // Tab Switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const targetTab = e.currentTarget.getAttribute('data-tab');
+      switchTab(targetTab);
+    });
+  });
 }
 
 // ===================================
@@ -140,11 +161,8 @@ function updateGenerateButtonText() {
   if (selected.length === 0) {
     btnText.textContent = '🚀 Select at least one platform';
     elements.generateBtn.disabled = true;
-  } else if (selected.length === 4) {
-    btnText.textContent = '🚀 Generate for All Platforms';
-    elements.generateBtn.disabled = false;
   } else {
-    btnText.textContent = `🚀 Generate for ${selected.length} Platform${selected.length > 1 ? 's' : ''}`;
+    btnText.textContent = '🚀 Generate Content!';
     elements.generateBtn.disabled = false;
   }
 }
@@ -210,6 +228,7 @@ async function generateForPlatform(platform, content) {
   try {
     const result = await callAnthropicAPI(prompt.systemPrompt, content);
     outputElement.value = result;
+    updatePreview(platform); // Update preview after generation
   } catch (error) {
     outputElement.value = `Error: ${error.message}`;
     throw error;
@@ -413,6 +432,118 @@ async function loadPlatformPrompts() {
     console.error('Error loading platform prompts:', error);
     showStatus('error', 'Failed to load platform instructions. Please refresh the page.');
     throw error;
+  }
+}
+
+
+async function init() {
+  try {
+    // Load prompts from markdown files
+    PLATFORM_PROMPTS = await loadPlatformPrompts();
+    console.log('Platform prompts loaded successfully');
+
+    // Attach event listeners
+    attachEventListeners();
+
+    // Initialize UI
+    updateGenerateButtonText();
+  } catch (error) {
+    console.error('Initialization failed:', error);
+  }
+}
+
+
+// ===================================
+// Preview Update Functions
+// ===================================
+
+function updatePreview(platform) {
+  const content = elements[`${platform}Output`].value;
+  const previewElement = document.getElementById(`${platform}PreviewContent`);
+
+  if (!previewElement || !content) return;
+
+  // Update preview based on platform
+  switch (platform) {
+    case 'linkedin':
+      updateLinkedInPreview(content, previewElement);
+      break;
+    case 'instagram':
+      updateInstagramPreview(content, previewElement);
+      break;
+    case 'circle':
+      updateCirclePreview(content, previewElement);
+      break;
+    case 'kakaotalk':
+      updateKakaotalkPreview(content, previewElement);
+      break;
+  }
+}
+
+function updateLinkedInPreview(content, element) {
+  // Preserve line breaks and format hashtags
+  const formatted = content
+    .split('\n')
+    .map(line => {
+      // Make hashtags blue
+      return line.replace(/#(\w+)/g, '<span style="color: #0077b5;">#$1</span>');
+    })
+    .join('\n');
+
+  element.innerHTML = formatted;
+}
+
+function updateInstagramPreview(content, element) {
+  // Format hashtags in blue and preserve emojis
+  const formatted = content.replace(/#(\w+)/g, '<span style="color: #0095f6;">#$1</span>');
+  element.innerHTML = `<span class="instagram-username">pknic_official</span> ${formatted}`;
+}
+
+function updateCirclePreview(content, element) {
+  // Parse markdown-style headers and format them
+  const formatted = content
+    .split('\n')
+    .map(line => {
+      // Convert ## headers to styled headers
+      if (line.startsWith('## ')) {
+        return `<h2>${line.substring(3)}</h2>`;
+      }
+      // Convert bullet points
+      if (line.trim().startsWith('*   ') || line.trim().startsWith('- ')) {
+        return `<li>${line.trim().substring(4)}</li>`;
+      }
+      return line;
+    })
+    .join('\n');
+
+  element.innerHTML = formatted;
+}
+
+function updateKakaotalkPreview(content, element) {
+  // Simple text display for Kakaotalk
+  element.textContent = content;
+}
+
+// ===================================
+// Tab Switching
+// ===================================
+
+function switchTab(tabName) {
+  // Remove active class from all tabs and tab contents
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  document.querySelectorAll('.tab-content').forEach(content => {
+    content.classList.remove('active');
+  });
+
+  // Add active class to selected tab and content
+  const selectedBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+  const selectedContent = document.getElementById(`tab-${tabName}`);
+
+  if (selectedBtn && selectedContent) {
+    selectedBtn.classList.add('active');
+    selectedContent.classList.add('active');
   }
 }
 

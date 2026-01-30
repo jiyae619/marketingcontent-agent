@@ -3,19 +3,24 @@
    =================================== */
 
 :root {
-  /* Color Palette - Dark Mode Optimized */
-  --color-bg-primary: #0a0e27;
-  --color-bg-secondary: #151932;
-  --color-bg-tertiary: #1e2442;
-  --color-bg-glass: rgba(30, 36, 66, 0.7);
+  /* Color Palette - Elegant Design System */
+  --color-cream: #F9F8F4;
+  --color-charcoal: #222222;
+  --color-forest: #1A3C34;
+  --color-gold: #C5A368;
 
-  --color-accent-primary: #6366f1;
-  --color-accent-secondary: #8b5cf6;
-  --color-accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  --color-bg-primary: #F9F8F4;
+  --color-bg-secondary: #FFFFFF;
+  --color-bg-tertiary: #f5f4f0;
+  --color-bg-glass: rgba(249, 248, 244, 0.9);
 
-  --color-text-primary: #f8fafc;
-  --color-text-secondary: #cbd5e1;
-  --color-text-tertiary: #94a3b8;
+  --color-accent-primary: #1A3C34;
+  --color-accent-secondary: #C5A368;
+  --color-accent-gradient: linear-gradient(135deg, #1A3C34 0%, #C5A368 100%);
+
+  --color-text-primary: #222222;
+  --color-text-secondary: #1A3C34;
+  --color-text-tertiary: #666666;
 
   --color-success: #10b981;
   --color-error: #ef4444;
@@ -29,7 +34,9 @@
   --color-kakaotalk-text: #3c1e1e;
 
   /* Typography */
-  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-primary: var(--font-sans);
   --font-mono: 'SF Mono', 'Monaco', 'Courier New', monospace;
 
   --font-size-xs: 0.75rem;
@@ -75,7 +82,7 @@
    Base Styles & Reset
    =================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap');
 
 * {
   margin: 0;
@@ -92,10 +99,6 @@ html {
 body {
   font-family: var(--font-primary);
   background: var(--color-bg-primary);
-  background-image:
-    radial-gradient(ellipse at top, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom, rgba(139, 92, 246, 0.1) 0%, transparent 50%);
-  background-attachment: fixed;
   color: var(--color-text-primary);
   line-height: 1.6;
   min-height: 100vh;
@@ -152,6 +155,7 @@ header {
   margin-bottom: var(--space-2xl);
   text-align: center;
   position: relative;
+  overflow: hidden;
 }
 
 .app-title {
@@ -162,12 +166,16 @@ header {
   background-clip: text;
   margin-bottom: var(--space-sm);
   display: inline-block;
+  position: relative;
+  z-index: 1;
 }
 
 .app-subtitle {
   color: var(--color-text-secondary);
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-normal);
+  position: relative;
+  z-index: 1;
 }
 
 /* ===================================
@@ -291,18 +299,20 @@ textarea.platform-output {
 }
 
 .btn-primary {
-  background: var(--color-accent-gradient);
-  color: white;
+  background: var(--color-forest);
+  color: #FFFFFF;
   box-shadow: var(--shadow-md);
 }
 
 .btn-primary:hover {
+  background: #0f2620;
   transform: translateY(-2px);
-  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  box-shadow: var(--shadow-lg);
 }
 
 .btn-primary:active {
   transform: translateY(0);
+  background: var(--color-forest);
 }
 
 .btn-primary:disabled {
@@ -312,14 +322,15 @@ textarea.platform-output {
 }
 
 .btn-secondary {
-  background: var(--color-bg-tertiary);
-  color: var(--color-text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: var(--color-bg-secondary);
+  color: var(--color-charcoal);
+  border: 2px solid var(--color-charcoal);
 }
 
 .btn-secondary:hover {
-  background: var(--color-bg-secondary);
-  border-color: var(--color-accent-primary);
+  background: var(--color-charcoal);
+  color: #FFFFFF;
+  border-color: var(--color-charcoal);
 }
 
 .btn-small {
@@ -352,27 +363,27 @@ textarea.platform-output {
 }
 
 .platform-linkedin {
-  background: rgba(0, 119, 181, 0.2);
-  color: #3b9dd3;
-  border: 1px solid rgba(0, 119, 181, 0.3);
+  background: #0077b5;
+  color: #FFFFFF;
+  border: 1px solid #005885;
 }
 
 .platform-instagram {
-  background: rgba(228, 64, 95, 0.2);
-  color: #f77f9f;
-  border: 1px solid rgba(228, 64, 95, 0.3);
+  background: #C13584;
+  color: #FFFFFF;
+  border: 1px solid #8B2760;
 }
 
 .platform-circle {
-  background: rgba(124, 58, 237, 0.2);
-  color: #a78bfa;
-  border: 1px solid rgba(124, 58, 237, 0.3);
+  background: #5B21B6;
+  color: #FFFFFF;
+  border: 1px solid #4C1D95;
 }
 
 .platform-kakaotalk {
-  background: rgba(254, 229, 0, 0.2);
-  color: #fee500;
-  border: 1px solid rgba(254, 229, 0, 0.3);
+  background: #3C1E1E;
+  color: #FEE500;
+  border: 1px solid #2A1515;
 }
 
 /* ===================================
@@ -381,7 +392,7 @@ textarea.platform-output {
 
 .platform-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+  grid-template-columns: 1fr;
   gap: var(--space-xl);
   margin-top: var(--space-xl);
 }
@@ -681,5 +692,499 @@ textarea.platform-output {
 
   .config-controls {
     flex-direction: column;
+  }
+}
+
+/* ===================================
+   Tab Navigation
+   =================================== */
+
+.tabs-container {
+  margin-top: var(--space-xl);
+}
+
+.tabs-nav {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xl);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  overflow-x: auto;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  padding: var(--space-md) var(--space-lg);
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  border-bottom: 3px solid transparent;
+  transition: all var(--transition-speed);
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: var(--color-text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.tab-btn .platform-badge {
+  font-size: var(--font-size-base);
+  padding: var(--space-xs) var(--space-md);
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* ===================================
+   Content & Preview Layout
+   =================================== */
+
+.content-columns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  align-items: center;
+}
+
+.content-editor {
+  width: 100%;
+  max-width: 800px;
+}
+
+.content-preview {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.content-editor label,
+.preview-label {
+  display: block;
+  font-weight: var(--font-weight-medium);
+  margin-bottom: var(--space-sm);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+@media (max-width: 1024px) {
+  .content-columns {
+    flex-direction: column;
+  }
+}
+
+/* ===================================
+   Preview Mockup Base Styles
+   =================================== */
+
+.preview-mockup {
+  background: var(--color-bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Platform-specific preview widths */
+.linkedin-preview {
+  max-width: 522px;
+  width: 100%;
+}
+
+.instagram-preview {
+  max-width: 446px;
+  width: 100%;
+}
+
+.circle-preview {
+  max-width: 630px;
+  width: 100%;
+}
+
+.kakaotalk-preview {
+  max-width: 375px;
+  width: 100%;
+}
+
+/* ===================================
+   LinkedIn Preview Mockup
+   =================================== */
+
+
+/* ===================================
+   LinkedIn Preview
+   =================================== */
+
+.linkedin-preview {
+  background: #fff;
+  color: #000;
+}
+
+.linkedin-post {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.linkedin-header {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.linkedin-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0077b5, #00a0dc);
+  flex-shrink: 0;
+}
+
+.linkedin-user-info {
+  flex: 1;
+}
+
+.linkedin-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #000;
+  margin-bottom: 2px;
+}
+
+.linkedin-meta {
+  font-size: 12px;
+  color: #666;
+}
+
+.linkedin-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #000;
+  margin-bottom: var(--space-md);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.linkedin-actions {
+  display: flex;
+  gap: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid #e0e0e0;
+}
+
+.linkedin-action {
+  font-size: 14px;
+  color: #666;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.linkedin-action:hover {
+  color: #0077b5;
+}
+
+/* ===================================
+   Instagram Preview
+   =================================== */
+
+.instagram-preview {
+  background: #fff;
+  color: #000;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.instagram-post {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.instagram-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.instagram-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+  flex-shrink: 0;
+}
+
+.instagram-username {
+  font-weight: 600;
+  font-size: 14px;
+  color: #000;
+}
+
+.instagram-image {
+  width: 100%;
+  height: 200px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 3px;
+  margin-bottom: var(--space-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 12px;
+}
+
+.instagram-image::after {
+  content: '📸 Image Placeholder';
+}
+
+.instagram-actions {
+  display: flex;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+  font-size: 24px;
+}
+
+.instagram-action {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.instagram-action:hover {
+  opacity: 0.7;
+}
+
+.instagram-likes {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: var(--space-xs);
+  color: #000;
+}
+
+.instagram-caption {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #000;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.instagram-caption .instagram-username {
+  margin-right: 4px;
+}
+
+/* ===================================
+   CIRCLE Preview
+   =================================== */
+
+.circle-preview {
+  background: #f5f5f5;
+  color: #000;
+}
+
+.circle-post {
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.circle-header {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.circle-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #7c3aed, #a78bfa);
+  flex-shrink: 0;
+}
+
+.circle-user-info {
+  flex: 1;
+}
+
+.circle-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #000;
+  margin-bottom: 2px;
+}
+
+.circle-meta {
+  font-size: 12px;
+  color: #666;
+}
+
+.circle-content {
+  font-size: 14px;
+  line-height: 1.7;
+  color: #000;
+  margin-bottom: var(--space-md);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.circle-content h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-top: var(--space-md);
+  margin-bottom: var(--space-sm);
+  color: #7c3aed;
+}
+
+.circle-content ul {
+  margin-left: var(--space-lg);
+  margin-bottom: var(--space-sm);
+}
+
+.circle-actions {
+  display: flex;
+  gap: var(--space-lg);
+  padding-top: var(--space-sm);
+  border-top: 1px solid #e0e0e0;
+}
+
+.circle-action {
+  font-size: 13px;
+  color: #666;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.circle-action:hover {
+  color: #7c3aed;
+}
+
+/* ===================================
+   Kakaotalk Preview
+   =================================== */
+
+.kakaotalk-preview {
+  background: #abc1d1;
+  padding: var(--space-md);
+}
+
+.kakaotalk-chat {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.kakaotalk-date {
+  text-align: center;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: var(--space-md);
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  display: inline-block;
+  width: 100%;
+}
+
+.kakaotalk-message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.kakaotalk-sender {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  margin-left: 4px;
+}
+
+.kakaotalk-bubble {
+  background: #fee500;
+  color: #3c1e1e;
+  padding: 10px 14px;
+  border-radius: 0 12px 12px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 80%;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.kakaotalk-time {
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
+}
+
+/* ===================================
+   Decorative Background Elements
+   =================================== */
+
+.header-background {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-blur-1 {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60vw;
+  height: 60vw;
+  background: rgba(26, 60, 52, 0.1);
+  border-radius: 50%;
+  filter: blur(100px);
+  mix-blend-mode: multiply;
+  animation: pulse-slow 4000ms ease-in-out infinite;
+}
+
+.bg-blur-2 {
+  position: absolute;
+  top: 33.333%;
+  left: 33.333%;
+  width: 40vw;
+  height: 40vw;
+  background: rgba(197, 163, 104, 0.2);
+  border-radius: 50%;
+  filter: blur(80px);
+  mix-blend-mode: multiply;
+}
+
+.bg-blur-3 {
+  position: absolute;
+  bottom: 33.333%;
+  right: 33.333%;
+  width: 35vw;
+  height: 35vw;
+  background: rgba(26, 60, 52, 0.15);
+  border-radius: 50%;
+  filter: blur(90px);
+  mix-blend-mode: multiply;
+}
+
+@keyframes pulse-slow {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
   }
 }
