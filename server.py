@@ -1,4 +1,4 @@
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import json
 import urllib.request
 import os
@@ -166,8 +166,8 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             super().do_POST()
 
 if __name__ == '__main__':
-    PORT = 8080
-    server = HTTPServer(('localhost', PORT), CORSRequestHandler)
+    PORT = int(os.getenv('API_PORT', '8081'))
+    server = ThreadingHTTPServer(('localhost', PORT), CORSRequestHandler)
     print(f'Server running on http://localhost:{PORT}')
     print('Press Ctrl+C to stop')
     server.serve_forever()

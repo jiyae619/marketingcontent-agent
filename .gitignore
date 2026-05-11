@@ -1,4 +1,13 @@
-# Environment variables
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Local secrets
 .env
 
 # Python
@@ -8,5 +17,29 @@ __pycache__/
 *.so
 .Python
 
-# macOS
+node_modules
+dist
+dist-ssr
+*.local
+
+# Local backups
+*.backup.js
+*.backup.css
+*.backup.html
+style.backup.css
+app.backup.js
+index.backup.html
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
 .DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+*storybook.log
+storybook-static

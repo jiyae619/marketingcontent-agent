@@ -1,113 +1,16 @@
-# Marketing Channel Agent 🚀
+# React + Vite
 
-Transform your marketing content for every platform with AI-powered intelligent adaptation.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Features
+Currently, two official plugins are available:
 
-- **Multi-Platform Support**: Generate optimized content for LinkedIn, Instagram, CIRCLE, and Kakaotalk
-- **AI-Powered**: Uses Google Gemini API for intelligent content transformation
-- **Platform-Specific**: Each platform gets content tailored to its unique style and requirements
-- **Real-time Generation**: Instant content adaptation with live character/word counters
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## Setup
+## React Compiler
 
-### 1. Clone the Repository
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-```bash
-git clone https://github.com/jiyae619/marketingcontent-agent.git
-cd marketingcontent-agent
-```
+## Expanding the ESLint configuration
 
-### 2. Install Dependencies
-
-```bash
-pip3 install python-dotenv
-```
-
-### 3. Configure API Key
-
-Create a `.env` file from the template:
-
-```bash
-cp .env.example .env
-```
-
-Then edit `.env` and add your Google Gemini API key:
-
-```
-GEMINI_API_KEY=your_actual_api_key_here
-```
-
-> **Get your API key**: https://aistudio.google.com/app/apikey
-
-> **Important**: The `.env` file is gitignored and will NOT be committed to version control. Your API key stays private!
-
-### 4. Run the Server
-
-```bash
-python3 server.py
-```
-
-The server will start on `http://localhost:8080`
-
-### 5. Open the App
-
-Open your browser and navigate to:
-```
-http://localhost:8080
-```
-
-## How It Works
-
-1. **Backend**: Python server (`server.py`) acts as a proxy to the Gemini API
-   - Reads API key from `.env` file (secure)
-   - Handles CORS for local development
-   - Forwards requests to Google Gemini API
-
-2. **Frontend**: Single-page application
-   - Input your original marketing content
-   - Click "Generate for All Platforms"
-   - Get optimized versions for each platform instantly
-
-## Platform-Specific Transformations
-
-- **LinkedIn**: Professional tone, 1,000 characters, thought leadership focus
-- **Instagram**: Casual tone, 125-150 words, emoji-enhanced, engaging
-- **CIRCLE**: Community-focused, 500-800 words, comprehensive with bullet points
-- **Kakaotalk**: Conversational, maximum 3 sentences, direct and actionable
-
-## Testing the Model
-
-Want to validate your AI prompts or test content quality?
-
-**Quick test:**
-```bash
-python3 testing/core/eval_runner.py
-open testing/results/report_*.html
-```
-
-**Test your own content:**
-1. Edit `testing/core/test_user_input.py` (line 125)
-2. Run: `python3 testing/core/test_user_input.py`
-
-📖 **See [TESTING_GUIDE.md](TESTING_GUIDE.md) for complete instructions**
-
-## Security
-
-✅ API key stored in `.env` file (not committed to git)  
-✅ `.gitignore` protects sensitive files  
-✅ API key never exposed to frontend  
-✅ Server-side API key management
-
-## Files
-
-- `index.html` - Frontend UI
-- `app.js` - Frontend logic
-- `style.css` - Styling
-- `server.py` - Backend proxy server
-- `.env.example` - Template for environment variables
-- `.gitignore` - Git ignore rules
-
-## License
-
-MIT
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
