@@ -47,6 +47,30 @@
             "platform": "kakaotalk",
             "input": "Venue change! Tonight's meetup is now at Building B, Room 301. See you at 7 PM!",
             "description": "Urgent update for Kakaotalk"
+        },
+        {
+            "id": "whatsapp_event_followup",
+            "platform": "whatsapp",
+            "input": "Following up on the Houston event — we still have 5 founder spots open for the Feb 5-6 Rice University Career Expo. Let me know if you want the registration link.",
+            "description": "Personal follow-up for WhatsApp"
+        },
+        {
+            "id": "whatsapp_product_update",
+            "platform": "whatsapp",
+            "input": "We just launched a new feature that helps marketing teams generate content for every channel from a single message.",
+            "description": "Product update for WhatsApp"
+        },
+        {
+            "id": "x_thought_leadership",
+            "platform": "x",
+            "input": "Most AI strategies fail because companies buy tools without rewriting their workflow first. The teams winning aren't the ones with the most subscriptions — they're the ones who fixed process before picking a model.",
+            "description": "Thought leadership for X"
+        },
+        {
+            "id": "x_event_announcement",
+            "platform": "x",
+            "input": "Rice University Career Expo in Houston, Feb 5-6, 2026. Hiring early-career talent? Mixer is free for employers, booth is $650. DM us for intros.",
+            "description": "Event announcement for X"
         }
     ]
 }

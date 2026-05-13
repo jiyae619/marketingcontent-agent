@@ -43,3 +43,7 @@ index.backup.html
 
 *storybook.log
 storybook-static
+
+# Feedback DB (user voice samples — local only)
+testing/results/feedback.db
+testing/results/feedback.db-journal
