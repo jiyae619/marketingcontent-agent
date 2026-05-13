@@ -1,7 +1,7 @@
 import PropTypes from 'prop-types';
 import { Button } from '../Button/Button';
 
-function LinkedInPreview({ content }) {
+function LinkedInPreview({ content, imageUrl }) {
     return (
         <div className="preview-mockup linkedin-preview">
             <div className="linkedin-post">
@@ -15,6 +15,11 @@ function LinkedInPreview({ content }) {
                 <div className="linkedin-content" dangerouslySetInnerHTML={{
                     __html: content.replace(/#(\w+)/g, '<span style="color: #0077b5;">#$1</span>')
                 }} />
+                {imageUrl && (
+                    <div className="linkedin-image">
+                        <img src={imageUrl} alt="" />
+                    </div>
+                )}
                 <div className="linkedin-actions">
                     <div className="linkedin-action">👍 Like</div>
                     <div className="linkedin-action">💬 Comment</div>
@@ -26,7 +31,7 @@ function LinkedInPreview({ content }) {
     );
 }
 
-function InstagramPreview({ content }) {
+function InstagramPreview({ content, imageUrl }) {
     return (
         <div className="preview-mockup instagram-preview">
             <div className="instagram-post">
@@ -34,7 +39,9 @@ function InstagramPreview({ content }) {
                     <div className="instagram-avatar"></div>
                     <div className="instagram-username">pknic_official</div>
                 </div>
-                <div className="instagram-image"></div>
+                <div className={`instagram-image ${imageUrl ? 'instagram-image-filled' : ''}`}>
+                    {imageUrl && <img src={imageUrl} alt="" />}
+                </div>
                 <div className="instagram-actions">
                     <div className="instagram-action">❤️</div>
                     <div className="instagram-action">💬</div>
@@ -86,12 +93,64 @@ function KakaotalkPreview({ content }) {
     );
 }
 
-export function PlatformPreview({ platform, content, onContentChange, onCopy }) {
+function WhatsappPreview({ content }) {
+    return (
+        <div className="preview-mockup whatsapp-preview">
+            <div className="whatsapp-chat">
+                <div className="whatsapp-date-wrap">
+                    <span className="whatsapp-date">TODAY</span>
+                </div>
+                <div className="whatsapp-row whatsapp-row-out">
+                    <div className="whatsapp-bubble whatsapp-bubble-out">
+                        <div className="whatsapp-text">{content}</div>
+                        <div className="whatsapp-meta">
+                            <span className="whatsapp-time">3:45 PM</span>
+                            <span className="whatsapp-check" aria-label="read">✓✓</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function XPreview({ content }) {
+    return (
+        <div className="preview-mockup x-preview">
+            <div className="x-post">
+                <div className="x-avatar" aria-hidden="true">
+                    <span className="x-avatar-glyph">𝕏</span>
+                </div>
+                <div className="x-body">
+                    <div className="x-header">
+                        <span className="x-name">PKNIC</span>
+                        <span className="x-verified" aria-label="Verified">✓</span>
+                        <span className="x-handle">@pknic</span>
+                        <span className="x-dot" aria-hidden="true">·</span>
+                        <span className="x-meta">1h</span>
+                    </div>
+                    <div className="x-content">{content}</div>
+                    <div className="x-actions">
+                        <span className="x-action x-action-reply"><span className="x-icon">💬</span><span className="x-count">24</span></span>
+                        <span className="x-action x-action-repost"><span className="x-icon">🔁</span><span className="x-count">12</span></span>
+                        <span className="x-action x-action-like"><span className="x-icon">♡</span><span className="x-count">138</span></span>
+                        <span className="x-action x-action-views"><span className="x-icon">📊</span><span className="x-count">5.4K</span></span>
+                        <span className="x-action x-action-share"><span className="x-icon">↗</span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export function PlatformPreview({ platform, content, imageUrl, linkUrl, onContentChange, onCopy }) {
     const previews = {
         linkedin: LinkedInPreview,
         instagram: InstagramPreview,
         circle: CirclePreview,
         kakaotalk: KakaotalkPreview,
+        whatsapp: WhatsappPreview,
+        x: XPreview,
     };
 
     const PreviewComponent = previews[platform];
@@ -116,7 +175,11 @@ export function PlatformPreview({ platform, content, onContentChange, onCopy }) 
             </div>
             <div className="content-preview">
                 <label className="preview-label">Live Preview</label>
-                <PreviewComponent content={content || `Your generated ${platform} post will appear here...`} />
+                <PreviewComponent
+                    content={content || `Your generated ${platform} post will appear here...`}
+                    imageUrl={imageUrl}
+                    linkUrl={linkUrl}
+                />
                 {onCopy && (
                     <Button variant="secondary" size="small" onClick={onCopy} className="preview-copy-button">
                         📋 Copy
@@ -128,13 +191,17 @@ export function PlatformPreview({ platform, content, onContentChange, onCopy }) 
 }
 
 PlatformPreview.propTypes = {
-    platform: PropTypes.oneOf(['linkedin', 'instagram', 'circle', 'kakaotalk']).isRequired,
+    platform: PropTypes.oneOf(['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']).isRequired,
     content: PropTypes.string,
+    imageUrl: PropTypes.string,
+    linkUrl: PropTypes.string,
     onContentChange: PropTypes.func,
     onCopy: PropTypes.func,
 };
 
-LinkedInPreview.propTypes = { content: PropTypes.string.isRequired };
-InstagramPreview.propTypes = { content: PropTypes.string.isRequired };
+LinkedInPreview.propTypes = { content: PropTypes.string.isRequired, imageUrl: PropTypes.string };
+InstagramPreview.propTypes = { content: PropTypes.string.isRequired, imageUrl: PropTypes.string };
 CirclePreview.propTypes = { content: PropTypes.string.isRequired };
 KakaotalkPreview.propTypes = { content: PropTypes.string.isRequired };
+WhatsappPreview.propTypes = { content: PropTypes.string.isRequired };
+XPreview.propTypes = { content: PropTypes.string.isRequired };

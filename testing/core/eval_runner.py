@@ -135,12 +135,9 @@ class EvalRunner:
         print(f"⏳ Evaluating content...")
         evaluator = get_evaluator(platform)
         criteria_results = evaluator.evaluate(generated_content)
-        
-        # Calculate overall score
-        scores = [r.get('score', 0) for r in criteria_results if r.get('score') is not None]
-        overall_score = sum(scores) / len(scores) if scores else 0
-        
-        # Print detailed results
+
+        # Weighted 0-100 total
+        overall_score = round(sum(r.get('weighted_score', 0) for r in criteria_results), 1)
         passed_count = sum(1 for r in criteria_results if r['passed'])
         total_count = len(criteria_results)
         
@@ -158,8 +155,10 @@ class EvalRunner:
             status_icon = "✅" if passed else "❌"
             score_display = f"{score:.0f}/100" if score is not None else "N/A"
             
-            print(f"{criterion_name} Criterion:")
-            print(f"  Score: {score_display} {status_icon}")
+            weight = result.get('weight', 0)
+            weighted = result.get('weighted_score', 0)
+            print(f"{criterion_name} Criterion (weight {weight}):")
+            print(f"  Score: {score_display} → weighted {weighted:.1f} {status_icon}")
             print(f"  {message}")
             if expected:
                 print(f"  Expected: {expected}")
@@ -168,10 +167,10 @@ class EvalRunner:
             if suggestion:
                 print(f"  💡 Suggestion: {suggestion}")
             print()
-        
-        print(f"Overall Score: {overall_score:.0f}/100 ({passed_count}/{total_count} criteria passed)")
-        overall_status = 'PASSED' if passed_count == total_count else 'FAILED'
-        print(f"Status: {overall_status}\n")
+
+        print(f"Overall Score: {overall_score}/100 ({passed_count}/{total_count} criteria passed)")
+        overall_status = 'PASSED' if overall_score >= 70 else 'FAILED'
+        print(f"Status: {overall_status} (threshold 70/100)\n")
         
         return {
             'test_id': test_id,

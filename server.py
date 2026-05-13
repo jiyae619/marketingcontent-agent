@@ -1,11 +1,24 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import json
+import sys
 import urllib.request
 import os
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Make our local modules importable
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'testing/core'))
+
+import feedback_db
+from evaluators import evaluate as run_eval
+
+feedback_db.init_db()
+
+VALID_PLATFORMS = ['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']
+VOICE_EXAMPLES_LIMIT = 3
 
 class CORSRequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
@@ -23,37 +36,111 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         # Handle /api/prompts/<platform> endpoint
         if self.path.startswith('/api/prompts/'):
             platform = self.path.split('/')[-1]
-            
-            # Validate platform
-            valid_platforms = ['linkedin', 'instagram', 'circle', 'kakaotalk']
-            if platform not in valid_platforms:
-                self.send_response(404)
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    'error': f'Invalid platform. Must be one of: {", ".join(valid_platforms)}'
-                }).encode())
+
+            if platform not in VALID_PLATFORMS:
+                self._json(404, {'error': f'Invalid platform. Must be one of: {", ".join(VALID_PLATFORMS)}'})
                 return
-            
-            # Load prompt from markdown file
+
             try:
                 prompt = self.load_prompt_from_md(platform)
-                self.send_response(200)
-                self.send_header('Content-Type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    'platform': platform,
-                    'prompt': prompt
-                }).encode())
+                prompt = self._with_voice_examples(platform, prompt)
+                self._json(200, {'platform': platform, 'prompt': prompt})
             except Exception as e:
-                self.send_response(500)
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    'error': f'Failed to load prompt: {str(e)}'
-                }).encode())
+                self._json(500, {'error': f'Failed to load prompt: {str(e)}'})
             return
-        
+
+        # Light dashboard for the dev — backend-only signal
+        if self.path == '/api/admin/stats':
+            self._json(200, {'platforms': feedback_db.stats_by_platform()})
+            return
+
         # Default: serve static files
         return super().do_GET()
+
+    def _json(self, status, body):
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(body).encode())
+
+    def _with_voice_examples(self, platform: str, base_prompt: str) -> str:
+        """Inject voice context — synthesized style profile if available, else raw few-shot.
+
+        Synthesized profile: one LLM call compresses N samples into ~120 tokens.
+        Raw few-shot: last 3 copied examples appended verbatim (~600 tokens).
+        Falls back to base prompt if no copies exist yet.
+        """
+        try:
+            # Try synthesized first (cheapest at inference time)
+            style = feedback_db.get_voice_profile(platform)
+            if style:
+                block = (
+                    "\n\n## Your Voice Style\n"
+                    "Write in this user's established voice and style:\n\n"
+                    f"{style}"
+                )
+                return base_prompt + block
+
+            # Fall back to raw few-shot
+            examples = feedback_db.recent_copies(platform, limit=VOICE_EXAMPLES_LIMIT)
+            if not examples:
+                return base_prompt
+
+            block = ["", "", "## User's Recent Approved Voice"]
+            block.append("Match the tone, rhythm, and voice of these approved samples. Do not copy verbatim.")
+            for i, ex in enumerate(examples, 1):
+                block.append(f"\n### Example {i}\n```\n{ex['final_content']}\n```")
+            return base_prompt + "\n".join(block)
+
+        except Exception:
+            return base_prompt
+
+    def _maybe_synthesize_voice(self, platform: str, api_key: str) -> None:
+        """Triggered after a copy is logged. If enough new copies exist, synthesize."""
+        try:
+            count = feedback_db.copy_count(platform)
+            existing = feedback_db.get_voice_profile(platform)
+            # Synthesize on first copy and every 3 thereafter
+            if count == 0 or (existing is not None):
+                return
+            examples = feedback_db.recent_copies(platform, limit=6)
+            if not examples:
+                return
+
+            samples_text = "\n\n---\n".join(
+                f"Sample {i+1}:\n{ex['final_content']}"
+                for i, ex in enumerate(examples)
+            )
+            synthesis_prompt = (
+                f"You are analyzing writing samples from a marketer to extract their voice profile.\n\n"
+                f"Platform: {platform}\n\n"
+                f"Samples:\n{samples_text}\n\n"
+                f"Write a concise voice profile (3-5 sentences, under 120 words) describing:\n"
+                f"- Sentence length and rhythm\n"
+                f"- Tone (formal/casual, direct/warm, etc.)\n"
+                f"- Characteristic words, phrases, or patterns\n"
+                f"- What they emphasize and what they avoid\n\n"
+                f"Return ONLY the voice profile description, nothing else."
+            )
+
+            gemini_url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}'
+            payload = {
+                "contents": [{"parts": [{"text": synthesis_prompt}]}],
+                "generationConfig": {"maxOutputTokens": 200},
+            }
+            req = urllib.request.Request(
+                gemini_url,
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req) as resp:
+                rd = json.loads(resp.read().decode())
+                if "candidates" in rd and rd["candidates"]:
+                    style = rd["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    feedback_db.save_voice_profile(platform, style)
+                    print(f"[voice] synthesized {platform} ({count} copies → {len(style)} chars)")
+        except Exception as e:
+            print(f"[voice] synthesis failed for {platform}: {e}")
     
     def load_prompt_from_md(self, platform):
         """Extract AI Prompt section from markdown file"""
@@ -90,39 +177,86 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         return prompt
     
     def do_POST(self):
+        # /api/copies — user copied content (= approval signal)
+        if self.path == '/api/copies':
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                payload = json.loads(self.rfile.read(length).decode('utf-8'))
+                platform = payload.get('platform', '').lower()
+                final = payload.get('final_content', '')
+                gen_id = payload.get('generation_id')
+                if platform not in VALID_PLATFORMS or not final.strip():
+                    self._json(400, {'error': 'platform and final_content required'})
+                    return
+                row_id = feedback_db.log_copy(
+                    platform=platform,
+                    final_content=final,
+                    generation_id=gen_id,
+                )
+                print(f"[copy] {platform} approved id={row_id} chars={len(final)} voice_v={feedback_db.voice_version(platform)}")
+                self._json(200, {'id': row_id, 'platform': platform})
+
+                # Trigger voice synthesis if enough samples accumulated (async-ish)
+                api_key = os.getenv('GEMINI_API_KEY')
+                if api_key:
+                    import threading
+                    threading.Thread(
+                        target=self._maybe_synthesize_voice,
+                        args=(platform, api_key),
+                        daemon=True,
+                    ).start()
+            except Exception as e:
+                self._json(500, {'error': str(e)})
+            return
+
         # Handle /api/gemini endpoint
         if self.path == '/api/gemini':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode('utf-8'))
             
-            # Get API key from environment variable first, fallback to request
             api_key = os.getenv('GEMINI_API_KEY') or data.get('api_key')
             if not api_key:
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    'error': 'API key required. Set GEMINI_API_KEY environment variable or provide api_key in request.'
-                }).encode())
+                self._json(400, {'error': 'GEMINI_API_KEY not set'})
                 return
-            
-            # Extract data for Gemini
-            system_prompt = data.get('system', '')
+
+            platform = (data.get('platform') or '').lower()
+            if platform not in VALID_PLATFORMS:
+                self._json(400, {'error': f'Unknown platform: {platform}'})
+                return
+
             user_message = data.get('messages', [{}])[0].get('content', '')
-            
-            # Combine system and user for Gemini
+            link_url    = data.get('link_url', '') or ''
+            has_image   = bool(data.get('has_image'))
+
+            # Cache check — skip Gemini entirely if identical input seen before
+            v_ver = feedback_db.voice_version(platform)
+            cache_key = feedback_db.make_cache_key(platform, user_message, link_url, has_image, v_ver)
+            cached = feedback_db.cache_get(cache_key)
+            if cached:
+                print(f"[cache] HIT  {platform} key={cache_key[:12]}…")
+                self._json(200, {'content': [{'text': cached['content']}], 'from_cache': True})
+                return
+            print(f"[cache] MISS {platform} key={cache_key[:12]}…  voice_v={v_ver}")
+
+            # Build prompt entirely server-side — frontend no longer sends system.
+            system_prompt = self.load_prompt_from_md(platform)
+            system_prompt = self._with_voice_examples(platform, system_prompt)
             full_prompt = f"{system_prompt}\n\nUser content to transform:\n{user_message}"
-            
+
             # Forward request to Gemini API
             try:
                 gemini_url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}'
-                
+
+                # Gemini 2.5 Flash has "thinking" enabled by default and reasoning
+                # tokens count against the output budget — which silently truncates
+                # mid-length output (LinkedIn/Instagram saw cuts mid-sentence).
+                # Content generation doesn't need chain-of-thought; disable it.
                 gemini_payload = {
-                    "contents": [{
-                        "parts": [{
-                            "text": full_prompt
-                        }]
-                    }]
+                    "contents": [{"parts": [{"text": full_prompt}]}],
+                    "generationConfig": {
+                        "thinkingConfig": {"thinkingBudget": 0},
+                    },
                 }
                 
                 req = urllib.request.Request(
@@ -135,16 +269,33 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 
                 with urllib.request.urlopen(req) as response:
                     response_data = json.loads(response.read().decode('utf-8'))
-                    
-                    # Convert Gemini response to match our expected format
+
                     if 'candidates' in response_data and len(response_data['candidates']) > 0:
                         text = response_data['candidates'][0]['content']['parts'][0]['text']
-                        result = {
-                            'content': [{'text': text}]
-                        }
+                        result = {'content': [{'text': text}]}
+
+                        # Eval + persist + cache
+                        if platform in VALID_PLATFORMS:
+                            try:
+                                eval_result = run_eval(platform, text)
+                                score = eval_result['total']
+                                gen_id = feedback_db.log_generation(
+                                    platform=platform,
+                                    original_input=user_message,
+                                    generated_content=text,
+                                    link_url=link_url,
+                                    has_image=has_image,
+                                    eval_score=score,
+                                    eval_detail=json.dumps(eval_result['criteria']),
+                                )
+                                feedback_db.cache_set(cache_key, platform, text, score)
+                                result['generation_id'] = gen_id
+                                print(f"[gen] {platform} id={gen_id} score={score:.1f}/100 chars={len(text)}")
+                            except Exception as log_err:
+                                print(f"[gen] log failed for {platform}: {log_err}")
                     else:
                         result = {'error': 'No response from Gemini'}
-                    
+
                     self.send_response(200)
                     self.send_header('Content-Type', 'application/json')
                     self.end_headers()

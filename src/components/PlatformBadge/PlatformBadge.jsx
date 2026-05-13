@@ -21,6 +21,16 @@ const platformConfig = {
         label: 'Kakaotalk',
         className: 'platform-kakaotalk',
     },
+    whatsapp: {
+        icon: '💚',
+        label: 'WhatsApp',
+        className: 'platform-whatsapp',
+    },
+    x: {
+        icon: '𝕏',
+        label: 'X',
+        className: 'platform-x',
+    },
 };
 
 export function PlatformBadge({ platform, showIcon = true }) {
@@ -39,6 +49,6 @@ export function PlatformBadge({ platform, showIcon = true }) {
 }
 
 PlatformBadge.propTypes = {
-    platform: PropTypes.oneOf(['linkedin', 'instagram', 'circle', 'kakaotalk']).isRequired,
+    platform: PropTypes.oneOf(['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']).isRequired,
     showIcon: PropTypes.bool,
 };

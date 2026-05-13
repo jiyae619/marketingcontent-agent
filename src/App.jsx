@@ -13,16 +13,35 @@ const PLATFORM_TABS = [
   { id: 'instagram', label: 'Instagram' },
   { id: 'circle', label: 'CIRCLE' },
   { id: 'kakaotalk', label: 'Kakaotalk' },
+  { id: 'whatsapp', label: 'WhatsApp' },
+  { id: 'x', label: 'X' },
 ];
 
 function App() {
   const [originalContent, setOriginalContent] = useState('');
-  const [selectedPlatforms, setSelectedPlatforms] = useState(['linkedin', 'instagram', 'circle', 'kakaotalk']);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [imageDataUrl, setImageDataUrl] = useState('');
+  const [selectedPlatforms, setSelectedPlatforms] = useState(['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']);
   const [generatedContent, setGeneratedContent] = useState({});
+  const [generationIds, setGenerationIds] = useState({});
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState('linkedin');
   const [statusMessage, setStatusMessage] = useState(null);
   const [showTabs, setShowTabs] = useState(false);
+
+  const handleImageUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showStatus('error', 'Please select an image file');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => setImageDataUrl(e.target?.result || '');
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = () => setImageDataUrl('');
 
   const showStatus = (type, message) => {
     setStatusMessage({ type, message });
@@ -51,24 +70,26 @@ function App() {
     setGeneratedContent(generatingState);
 
     try {
-      // Generate for all selected platforms in parallel
+      // Compose user message with optional link + image hint
+      const extras = [];
+      if (linkUrl.trim()) extras.push(`Include this link in the post: ${linkUrl.trim()}`);
+      if (imageDataUrl) extras.push('Note: an image is attached to this post — reference it naturally if appropriate.');
+      const userMessage = extras.length
+        ? `${originalContent}\n\n---\n${extras.join('\n')}`
+        : originalContent;
+
+      // Generate for all selected platforms in parallel.
+      // System prompt is assembled server-side — we only send the raw user content.
       const promises = selectedPlatforms.map(async (platform) => {
         try {
           const response = await fetch('/api/gemini', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: 'claude-3-5-sonnet-20241022',
-              max_tokens: 2048,
-              system: await loadPlatformPrompt(platform),
-              messages: [
-                {
-                  role: 'user',
-                  content: originalContent,
-                },
-              ],
+              platform,
+              link_url: linkUrl.trim(),
+              has_image: Boolean(imageDataUrl),
+              messages: [{ role: 'user', content: userMessage }],
             }),
           });
 
@@ -83,6 +104,9 @@ function App() {
             ...prevContent,
             [platform]: content,
           }));
+          if (data.generation_id) {
+            setGenerationIds(prev => ({ ...prev, [platform]: data.generation_id }));
+          }
           return { platform, content };
         } catch (error) {
           const content = `Error: ${error.message}`;
@@ -103,20 +127,11 @@ function App() {
     }
   };
 
-  const loadPlatformPrompt = async (platform) => {
-    try {
-      const response = await fetch(`/api/prompts/${platform}`);
-      const data = await response.json();
-      return data.prompt;
-    } catch (error) {
-      console.error(`Failed to load ${platform} prompt:`, error);
-      return `Transform this content for ${platform}`;
-    }
-  };
 
   const clearAll = () => {
     setOriginalContent('');
     setGeneratedContent({});
+    setGenerationIds({});
     setShowTabs(false);
   };
 
@@ -126,6 +141,18 @@ function App() {
       showStatus('error', 'No content to copy');
       return;
     }
+
+    // Approval signal fires regardless of clipboard outcome.
+    // The user's intent to copy is the signal; clipboard is just delivery.
+    fetch('/api/copies', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform,
+        final_content: content,
+        generation_id: generationIds[platform],
+      }),
+    }).catch(() => {});
 
     try {
       await navigator.clipboard.writeText(content);
@@ -152,14 +179,58 @@ function App() {
         {/* Input Section */}
         <Card title="📝 Original Content">
           <div className="input-grid">
-            <Input
-              label="Paste or write your marketing content"
-              type="textarea"
-              value={originalContent}
-              onChange={(e) => setOriginalContent(e.target.value)}
-              placeholder="Enter your marketing message here. This will be adapted for each platform with the appropriate tone, length, and formatting..."
-              rows={8}
-            />
+            <div className="content-input-stack">
+              <Input
+                label="Write your content"
+                type="textarea"
+                value={originalContent}
+                onChange={(e) => setOriginalContent(e.target.value)}
+                placeholder="Enter your marketing message here. This will be adapted for each platform with the appropriate tone, length, and formatting..."
+                rows={8}
+              />
+
+              <div className="attachments">
+                <div className="attachment-field">
+                  <label htmlFor="link-url" className="attachment-label">🔗 Link</label>
+                  <input
+                    id="link-url"
+                    type="url"
+                    className="attachment-input"
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    placeholder="https://example.com/your-event"
+                  />
+                </div>
+
+                <div className="attachment-field">
+                  <label className="attachment-label" htmlFor="image-upload">🖼️ Image</label>
+                  {imageDataUrl ? (
+                    <div className="attachment-image-preview">
+                      <img src={imageDataUrl} alt="Upload preview" />
+                      <button
+                        type="button"
+                        className="attachment-image-remove"
+                        onClick={removeImage}
+                        aria-label="Remove image"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <label htmlFor="image-upload" className="attachment-image-dropzone">
+                      <span>Click to upload</span>
+                      <input
+                        id="image-upload"
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        hidden
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+            </div>
 
             <PlatformSelector
               selectedPlatforms={selectedPlatforms}
@@ -180,9 +251,6 @@ function App() {
               ) : (
                 '🚀 Generate Content!'
               )}
-            </Button>
-            <Button variant="secondary" size="small" onClick={clearAll}>
-              Clear All
             </Button>
           </div>
         </Card>
@@ -210,6 +278,8 @@ function App() {
                   <PlatformPreview
                     platform={platform}
                     content={generatedContent[platform] || ''}
+                    imageUrl={imageDataUrl}
+                    linkUrl={linkUrl}
                     onContentChange={(content) => {
                       setGeneratedContent(prevContent => ({
                         ...prevContent,

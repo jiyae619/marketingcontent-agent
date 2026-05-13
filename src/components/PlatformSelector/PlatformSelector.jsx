@@ -6,6 +6,8 @@ const platforms = [
     { id: 'instagram', label: 'Instagram' },
     { id: 'circle', label: 'CIRCLE' },
     { id: 'kakaotalk', label: 'Kakaotalk' },
+    { id: 'whatsapp', label: 'WhatsApp' },
+    { id: 'x', label: 'X' },
 ];
 
 export function PlatformSelector({ selectedPlatforms = [], onChange }) {
@@ -47,7 +49,7 @@ PlatformSelector.propTypes = {
 
 // Wrapper component for stories
 export function PlatformSelectorDemo() {
-    const [selected, setSelected] = useState(['linkedin', 'instagram', 'circle', 'kakaotalk']);
+    const [selected, setSelected] = useState(['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']);
 
     return (
         <div>

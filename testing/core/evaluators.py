@@ -1,397 +1,580 @@
 """
-Evaluation functions for testing generated marketing content quality.
-Each evaluator checks specific criteria from the content strategy.
+Weighted 0-100 evaluators for marketing content quality.
+
+Each platform defines a list of Criterion objects with a weight and a scorer.
+Total score is the weighted sum of criterion scores (each 0-100).
+
+Result format is backwards-compatible with report_generator.py:
+{
+    'criterion': str,
+    'passed': bool,        # score >= 70 → passed
+    'message': str,
+    'score': float,        # 0-100
+    'suggestion': str,
+    'actual': str,
+    'expected': str,
+    'weight': float,       # 0-1, sums to 1.0 per platform
+    'weighted_score': float,  # score * weight
+}
 """
 
 import re
-from typing import Dict, List, Tuple
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport
+    "\U0001F1E0-\U0001F1FF"  # flags
+    "\U00002600-\U000027BF"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA70-\U0001FAFF"
+    "]+",
+    flags=re.UNICODE,
+)
+
+HASHTAG_RE = re.compile(r"#\w+")
+SENTENCE_SPLIT_RE = re.compile(r"[.!?]+")
+URL_RE = re.compile(r"https?://\S+|www\.\S+")
+THREAD_MARKER_RE = re.compile(r"\b\d+/\d*\b|🧵")
 
 
-class ContentEvaluator:
-    """Base class for content evaluation"""
-    
-    def __init__(self, platform: str):
-        self.platform = platform
-        self.results = []
-    
-    def add_result(self, criterion: str, passed: bool, message: str, score: float = None):
-        """Add an evaluation result"""
-        self.results.append({
-            'criterion': criterion,
-            'passed': passed,
-            'message': message,
-            'score': score
-        })
-    
-    def get_results(self) -> List[Dict]:
-        """Get all evaluation results"""
-        return self.results
+def count_chars(content: str) -> int:
+    return len(content)
 
 
-class LinkedInEvaluator(ContentEvaluator):
-    """Evaluator for LinkedIn content"""
-    
-    def __init__(self):
-        super().__init__('linkedin')
-    
+def count_words(content: str) -> int:
+    return len(content.strip().split())
+
+
+def count_sentences(content: str) -> int:
+    return len([s for s in SENTENCE_SPLIT_RE.split(content) if s.strip()])
+
+
+def count_hashtags(content: str) -> int:
+    return len(HASHTAG_RE.findall(content))
+
+
+def count_emojis(content: str) -> int:
+    return sum(len(m) for m in EMOJI_RE.findall(content))
+
+
+def has_bullets(content: str) -> bool:
+    return bool(re.search(r"^[•\-\*]\s|\n[•\-\*]\s", content))
+
+
+def has_headers(content: str) -> bool:
+    if "##" in content:
+        return True
+    return bool(re.search(r"^[A-Z][^.!?]*:$", content, re.MULTILINE))
+
+
+def has_url(content: str) -> bool:
+    return bool(URL_RE.search(content))
+
+
+def trapezoid_score(value: float, low_zero: float, low_ideal: float,
+                    high_ideal: float, high_zero: float) -> float:
+    """Trapezoidal scoring:
+      0 at value<=low_zero or value>=high_zero
+      100 between low_ideal and high_ideal
+      linear ramps on the flanks.
+    """
+    if value <= low_zero or value >= high_zero:
+        return 0.0
+    if low_ideal <= value <= high_ideal:
+        return 100.0
+    if value < low_ideal:
+        return ((value - low_zero) / (low_ideal - low_zero)) * 100.0
+    return ((high_zero - value) / (high_zero - high_ideal)) * 100.0
+
+
+def ramp_down_score(value: float, ideal_max: float, zero_at: float) -> float:
+    """Returns 100 when value <= ideal_max, 0 at value >= zero_at, linear between."""
+    if value <= ideal_max:
+        return 100.0
+    if value >= zero_at:
+        return 0.0
+    return ((zero_at - value) / (zero_at - ideal_max)) * 100.0
+
+
+def keyword_density_score(content: str, keywords: List[str],
+                          ideal_min: int = 2, ideal_max: int = 5) -> tuple:
+    """Returns (score, found_keywords) — score scales with how many keywords appear."""
+    content_lower = content.lower()
+    found = [k for k in keywords if k in content_lower]
+    n = len(found)
+    if ideal_min <= n <= ideal_max:
+        return 100.0, found
+    if n < ideal_min:
+        return (n / ideal_min) * 100.0, found
+    # Too many — gentle penalty
+    return max(0.0, 100.0 - (n - ideal_max) * 10.0), found
+
+
+# ---------------------------------------------------------------------------
+# Criterion + base evaluator
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CriterionResult:
+    criterion: str
+    score: float
+    weight: float
+    message: str
+    suggestion: str = ""
+    actual: str = ""
+    expected: str = ""
+
+    @property
+    def passed(self) -> bool:
+        return self.score >= 70.0
+
+    @property
+    def weighted_score(self) -> float:
+        return self.score * self.weight
+
+    def to_dict(self) -> Dict:
+        return {
+            "criterion": self.criterion,
+            "score": round(self.score, 1),
+            "weight": self.weight,
+            "weighted_score": round(self.weighted_score, 2),
+            "passed": self.passed,
+            "message": self.message,
+            "suggestion": self.suggestion,
+            "actual": self.actual,
+            "expected": self.expected,
+        }
+
+
+@dataclass
+class Criterion:
+    name: str
+    weight: float  # 0-1
+    scorer: Callable[[str], CriterionResult]
+
+
+class ChannelEvaluator:
+    """Base evaluator. Subclasses just define `criteria`."""
+
+    platform: str = ""
+    criteria: List[Criterion] = field(default_factory=list)
+
     def evaluate(self, content: str) -> List[Dict]:
-        """Run all LinkedIn evaluations"""
-        self.check_length(content)
-        self.check_tone(content)
-        self.check_format(content)
-        return self.get_results()
-    
-    def check_length(self, content: str):
-        """LinkedIn should be around 1000 characters"""
-        char_count = len(content)
-        target_min = 900
-        target_max = 1100
-        optimal = 1000
-        
-        # Calculate score (0-100)
-        if target_min <= char_count <= target_max:
-            score = 100
-            passed = True
-            message = f"✓ Character count ({char_count}) is within optimal range ({target_min}-{target_max})"
-            suggestion = "Perfect length for LinkedIn engagement!"
-        elif char_count < target_min:
-            # Too short - score based on how far from target
-            gap = target_min - char_count
-            gap_percentage = (gap / target_min) * 100
-            score = max(0, 100 - gap_percentage)
-            passed = False
-            message = f"✗ Too short: {char_count} characters (minimum: {target_min})"
-            suggestion = f"Add {gap} more characters ({gap_percentage:.0f}% too short). Consider expanding on key points, adding examples, or including more detail."
-        else:
-            # Too long - score based on how far over
-            gap = char_count - target_max
-            gap_percentage = (gap / target_max) * 100
-            score = max(0, 100 - gap_percentage)
-            passed = False
-            message = f"✗ Too long: {char_count} characters (maximum: {target_max})"
-            suggestion = f"Remove {gap} characters ({gap_percentage:.0f}% too long). Consider being more concise or removing less critical details."
-        
-        self.add_result('length', passed, message, score)
-        self.results[-1]['suggestion'] = suggestion
-        self.results[-1]['actual'] = char_count
-        self.results[-1]['expected'] = f"{target_min}-{target_max} characters"
-    
-    def check_tone(self, content: str):
-        """Check for professional tone indicators"""
-        professional_indicators = [
-            'insight', 'strategy', 'professional', 'expertise', 'industry',
-            'leadership', 'innovation', 'growth', 'development', 'success'
-        ]
-        
-        content_lower = content.lower()
-        found_indicators = [ind for ind in professional_indicators if ind in content_lower]
-        
-        # Score based on number of indicators
-        num_found = len(found_indicators)
-        if num_found >= 5:
-            score = 100
-        elif num_found >= 3:
-            score = 75
-        elif num_found >= 2:
-            score = 50
-        else:
-            score = 25
-        
-        passed = num_found >= 2
-        
-        if passed:
-            message = f"✓ Professional tone detected ({num_found} indicators: {', '.join(found_indicators[:3])})"
-            suggestion = "Excellent professional tone!" if num_found >= 4 else "Good professional tone. Consider adding more industry-specific terms."
-        else:
-            message = f"✗ Lacks professional tone (found only {num_found} indicators)"
-            suggestion = f"Add more professional language. Try including words like: {', '.join(professional_indicators[:5])}"
-        
-        self.add_result('tone', passed, message, score)
-        self.results[-1]['suggestion'] = suggestion
-        self.results[-1]['actual'] = f"{num_found} professional indicators"
-        self.results[-1]['expected'] = "At least 2 professional indicators"
-    
-    def check_format(self, content: str):
-        """Check formatting requirements"""
-        # Check for paragraph structure (multiple lines)
-        paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
-        num_paragraphs = len(paragraphs)
-        
-        # Score based on paragraph count
-        if num_paragraphs >= 3:
-            score = 100
-            passed = True
-            message = f"✓ Excellent paragraph structure ({num_paragraphs} paragraphs)"
-            suggestion = "Great formatting with clear paragraph breaks!"
-        elif num_paragraphs >= 2:
-            score = 75
-            passed = True
-            message = f"✓ Has proper paragraph structure ({num_paragraphs} paragraphs)"
-            suggestion = "Good structure. Consider adding one more paragraph for better readability."
-        else:
-            score = 30
-            passed = False
-            message = f"✗ Lacks paragraph structure ({num_paragraphs} paragraph)"
-            suggestion = "Break content into multiple paragraphs using line breaks for better readability."
-        
-        self.add_result('format', passed, message, score)
-        self.results[-1]['suggestion'] = suggestion
-        self.results[-1]['actual'] = f"{num_paragraphs} paragraphs"
-        self.results[-1]['expected'] = "At least 2-3 paragraphs"
+        results = []
+        for c in self.criteria:
+            r = c.scorer(content)
+            r.weight = c.weight  # ensure weight is set
+            results.append(r.to_dict())
+        return results
+
+    def total_score(self, content: str) -> float:
+        results = self.evaluate(content)
+        return round(sum(r["weighted_score"] for r in results), 1)
 
 
-class InstagramEvaluator(ContentEvaluator):
-    """Evaluator for Instagram content"""
-    
-    def __init__(self):
-        super().__init__('instagram')
-    
-    def evaluate(self, content: str) -> List[Dict]:
-        """Run all Instagram evaluations"""
-        self.check_length(content)
-        self.check_tone(content)
-        self.check_emojis(content)
-        return self.get_results()
-    
-    def check_length(self, content: str):
-        """Instagram should be 125-150 words"""
-        words = content.strip().split()
-        word_count = len(words)
-        target_min = 125
-        target_max = 150
-        
-        # Calculate score
-        if target_min <= word_count <= target_max:
-            score = 100
-            passed = True
-            message = f"✓ Word count ({word_count}) is within optimal range ({target_min}-{target_max})"
-            suggestion = "Perfect length for Instagram engagement!"
-        elif word_count < target_min:
-            gap = target_min - word_count
-            gap_percentage = (gap / target_min) * 100
-            score = max(0, 100 - gap_percentage)
-            passed = False
-            message = f"✗ Too short: {word_count} words (minimum: {target_min})"
-            suggestion = f"Add {gap} more words ({gap_percentage:.0f}% too short). Expand with more details or examples."
-        else:
-            gap = word_count - target_max
-            gap_percentage = (gap / target_max) * 100
-            score = max(0, 100 - gap_percentage)
-            passed = False
-            message = f"✗ Too long: {word_count} words (maximum: {target_max})"
-            suggestion = f"Remove {gap} words ({gap_percentage:.0f}% too long). Be more concise."
-        
-        self.add_result('length', passed, message, score)
-        self.results[-1]['suggestion'] = suggestion
-        self.results[-1]['actual'] = word_count
-        self.results[-1]['expected'] = f"{target_min}-{target_max} words"
-    
-    def check_tone(self, content: str):
-        """Check for casual, engaging tone"""
-        casual_indicators = [
-            '!', '?', 'you', 'your', 'we', 'our', 'let\'s', 'check out',
-            'amazing', 'awesome', 'love', 'excited'
-        ]
-        
-        content_lower = content.lower()
-        found_indicators = [ind for ind in casual_indicators if ind in content_lower]
-        
-        # At least 3 casual/engaging indicators expected
-        passed = len(found_indicators) >= 3
-        
-        if passed:
-            message = f"✓ Casual/engaging tone detected ({len(found_indicators)} indicators)"
-        else:
-            message = f"✗ Tone too formal (found only {len(found_indicators)} casual indicators)"
-        
-        self.add_result('tone', passed, message)
-    
-    def check_emojis(self, content: str):
-        """Instagram should have emojis"""
-        emoji_pattern = re.compile(
-            "["
-            "\U0001F600-\U0001F64F"  # emoticons
-            "\U0001F300-\U0001F5FF"  # symbols & pictographs
-            "\U0001F680-\U0001F6FF"  # transport & map symbols
-            "\U0001F1E0-\U0001F1FF"  # flags
-            "\U00002702-\U000027B0"
-            "\U000024C2-\U0001F251"
-            "]+", 
-            flags=re.UNICODE
+# ---------------------------------------------------------------------------
+# Reusable scorer factories
+# ---------------------------------------------------------------------------
+
+def char_length_scorer(low_zero, low_ideal, high_ideal, high_zero, weight):
+    def scorer(content: str) -> CriterionResult:
+        n = count_chars(content)
+        score = trapezoid_score(n, low_zero, low_ideal, high_ideal, high_zero)
+        return CriterionResult(
+            criterion="length",
+            score=score,
+            weight=weight,
+            message=f"Character count: {n}",
+            actual=str(n),
+            expected=f"{low_ideal}-{high_ideal} chars (acceptable {low_zero}-{high_zero})",
+            suggestion=(
+                f"Add ~{low_ideal - n} more chars." if n < low_ideal
+                else f"Trim ~{n - high_ideal} chars." if n > high_ideal
+                else "Length is in the sweet spot."
+            ),
         )
-        
-        emojis = emoji_pattern.findall(content)
-        has_emojis = len(emojis) > 0
-        
-        message = f"✓ Contains {len(emojis)} emoji(s)" if has_emojis else "✗ No emojis found"
-        self.add_result('emojis', has_emojis, message)
+    return scorer
 
 
-class CircleEvaluator(ContentEvaluator):
-    """Evaluator for CIRCLE content"""
-    
-    def __init__(self):
-        super().__init__('circle')
-    
-    def evaluate(self, content: str) -> List[Dict]:
-        """Run all CIRCLE evaluations"""
-        self.check_length(content)
-        self.check_structure(content)
-        self.check_formatting(content)
-        return self.get_results()
-    
-    def check_length(self, content: str):
-        """CIRCLE should be 500-800 words"""
-        words = content.strip().split()
-        word_count = len(words)
-        target_min = 500
-        target_max = 800
-        
-        # Calculate score
-        if target_min <= word_count <= target_max:
-            score = 100
-            passed = True
-            message = f"✓ Word count ({word_count}) is within optimal range ({target_min}-{target_max})"
-            suggestion = "Perfect length for CIRCLE community posts!"
-        elif word_count < target_min:
-            gap = target_min - word_count
-            gap_percentage = (gap / target_min) * 100
-            score = max(0, 100 - gap_percentage)
-            passed = False
-            message = f"✗ Too short: {word_count} words (minimum: {target_min})"
-            suggestion = f"Add {gap} more words ({gap_percentage:.0f}% too short). Include more details, examples, or expand sections."
-        else:
-            gap = word_count - target_max
-            gap_percentage = (gap / target_max) * 100
-            score = max(0, 100 - gap_percentage)
-            passed = False
-            message = f"✗ Too long: {word_count} words (maximum: {target_max})"
-            suggestion = f"Remove {gap} words ({gap_percentage:.0f}% too long). Focus on key information."
-        
-        self.add_result('length', passed, message, score)
-        self.results[-1]['suggestion'] = suggestion
-        self.results[-1]['actual'] = word_count
-        self.results[-1]['expected'] = f"{target_min}-{target_max} words"
-    
-    def check_structure(self, content: str):
-        """Check for required sections"""
-        # Look for title pattern [PKNIC X ...]
-        has_title = bool(re.search(r'\[PKNIC [xX×]', content))
-        
-        # Look for section headers (##)
-        has_headers = '##' in content or re.search(r'^[A-Z][^.!?]*:$', content, re.MULTILINE)
-        
-        # Check for community engagement elements
-        has_engagement = any(word in content.lower() for word in ['question', 'community', 'join', 'participate', 'share'])
-        
-        all_passed = has_title and has_headers and has_engagement
-        
-        details = []
-        if has_title:
-            details.append("title ✓")
-        else:
-            details.append("title ✗")
-        if has_headers:
-            details.append("headers ✓")
-        else:
-            details.append("headers ✗")
-        if has_engagement:
-            details.append("engagement ✓")
-        else:
-            details.append("engagement ✗")
-        
-        message = f"Structure check: {', '.join(details)}"
-        self.add_result('structure', all_passed, message)
-    
-    def check_formatting(self, content: str):
-        """Check for bullet points and clear formatting"""
-        has_bullets = bool(re.search(r'[•\-\*]\s', content))
-        has_emojis = bool(re.search(r'[\U0001F300-\U0001F9FF]', content))
-        
-        passed = has_bullets or has_emojis
-        
-        if has_bullets and has_emojis:
-            message = "✓ Has bullet points and emojis"
-        elif has_bullets:
-            message = "✓ Has bullet points"
-        elif has_emojis:
-            message = "✓ Has emojis for formatting"
-        else:
-            message = "✗ Missing bullet points or formatting elements"
-        
-        self.add_result('formatting', passed, message)
+def word_length_scorer(low_zero, low_ideal, high_ideal, high_zero, weight):
+    def scorer(content: str) -> CriterionResult:
+        n = count_words(content)
+        score = trapezoid_score(n, low_zero, low_ideal, high_ideal, high_zero)
+        return CriterionResult(
+            criterion="length",
+            score=score,
+            weight=weight,
+            message=f"Word count: {n}",
+            actual=str(n),
+            expected=f"{low_ideal}-{high_ideal} words",
+            suggestion=(
+                f"Add ~{low_ideal - n} more words." if n < low_ideal
+                else f"Trim ~{n - high_ideal} words." if n > high_ideal
+                else "Length is in the sweet spot."
+            ),
+        )
+    return scorer
 
 
-class KakaotalkEvaluator(ContentEvaluator):
-    """Evaluator for Kakaotalk content"""
-    
-    def __init__(self):
-        super().__init__('kakaotalk')
-    
-    def evaluate(self, content: str) -> List[Dict]:
-        """Run all Kakaotalk evaluations"""
-        self.check_length(content)
-        self.check_tone(content)
-        return self.get_results()
-    
-    def check_length(self, content: str):
-        """Kakaotalk should be maximum 3 sentences"""
-        # Split by sentence-ending punctuation
-        sentences = re.split(r'[.!?]+', content)
-        sentences = [s.strip() for s in sentences if s.strip()]
-        sentence_count = len(sentences)
-        target_max = 3
-        
-        # Calculate score
-        if sentence_count <= target_max:
-            score = 100 if sentence_count >= 2 else 75
-            passed = True
-            message = f"✓ Sentence count ({sentence_count}) is within limit (max {target_max})"
-            suggestion = "Perfect brevity for Kakaotalk!" if sentence_count == 3 else "Good length. Consider using all 3 sentences for maximum impact."
-        else:
-            gap = sentence_count - target_max
-            score = max(0, 100 - (gap * 30))
-            passed = False
-            message = f"✗ Too many sentences: {sentence_count} (maximum: {target_max})"
-            suggestion = f"Remove {gap} sentence(s). Combine ideas or remove less critical information."
-        
-        self.add_result('length', passed, message, score)
-        self.results[-1]['suggestion'] = suggestion
-        self.results[-1]['actual'] = sentence_count
-        self.results[-1]['expected'] = f"Maximum {target_max} sentences"
-    
-    def check_tone(self, content: str):
-        """Check for conversational, direct tone"""
-        direct_indicators = [
-            '!', '?', 'you', 'your', 'check', 'join', 'register',
-            'don\'t miss', 'hurry', 'now', 'today'
-        ]
-        
-        content_lower = content.lower()
-        found_indicators = [ind for ind in direct_indicators if ind in content_lower]
-        
-        # At least 2 direct/actionable indicators expected
-        passed = len(found_indicators) >= 2
-        
-        if passed:
-            message = f"✓ Direct/conversational tone detected ({len(found_indicators)} indicators)"
-        else:
-            message = f"✗ Lacks direct tone (found only {len(found_indicators)} indicators)"
-        
-        self.add_result('tone', passed, message)
+def sentence_max_scorer(ideal_max: int, zero_at: int, weight: float):
+    def scorer(content: str) -> CriterionResult:
+        n = count_sentences(content)
+        score = ramp_down_score(n, ideal_max, zero_at)
+        return CriterionResult(
+            criterion="sentence_count",
+            score=score,
+            weight=weight,
+            message=f"Sentence count: {n}",
+            actual=str(n),
+            expected=f"≤{ideal_max} sentences",
+            suggestion=(
+                "Within sentence limit." if n <= ideal_max
+                else f"Cut {n - ideal_max} sentence(s) — combine ideas."
+            ),
+        )
+    return scorer
 
 
-def get_evaluator(platform: str) -> ContentEvaluator:
-    """Factory function to get the appropriate evaluator"""
-    evaluators = {
-        'linkedin': LinkedInEvaluator,
-        'instagram': InstagramEvaluator,
-        'circle': CircleEvaluator,
-        'kakaotalk': KakaotalkEvaluator
-    }
-    
-    evaluator_class = evaluators.get(platform.lower())
-    if not evaluator_class:
+def hard_char_cap_scorer(cap: int, weight: float):
+    """For platforms with a hard limit (X = 280). Above cap = hard 0."""
+    def scorer(content: str) -> CriterionResult:
+        n = count_chars(content)
+        if n > cap:
+            score = 0.0
+            msg = f"OVER LIMIT: {n}/{cap} chars"
+            sug = f"Cut {n - cap} chars — X enforces this limit."
+        else:
+            # Sweet spot in last 80% of cap (e.g. 224-275 for X)
+            sweet_low = int(cap * 0.80)
+            score = trapezoid_score(n, 0, sweet_low, cap, cap + 1)
+            msg = f"Char count: {n}/{cap}"
+            sug = "Tight and punchy." if score >= 70 else f"Aim for {sweet_low}-{cap} for max impact."
+        return CriterionResult(
+            criterion="char_cap",
+            score=score,
+            weight=weight,
+            message=msg,
+            actual=str(n),
+            expected=f"≤{cap} chars (ideal {int(cap*0.8)}-{cap})",
+            suggestion=sug,
+        )
+    return scorer
+
+
+def hashtag_count_scorer(ideal_min: int, ideal_max: int, weight: float,
+                         zero_above: Optional[int] = None):
+    def scorer(content: str) -> CriterionResult:
+        n = count_hashtags(content)
+        if ideal_min <= n <= ideal_max:
+            score = 100.0
+        elif n < ideal_min:
+            score = (n / max(ideal_min, 1)) * 100.0 if ideal_min > 0 else 100.0
+        else:
+            zero = zero_above if zero_above else ideal_max * 3
+            score = max(0.0, ((zero - n) / (zero - ideal_max)) * 100.0)
+        # Special case: ideal_min == 0 and ideal_max == 0 → "no hashtags allowed"
+        if ideal_min == 0 and ideal_max == 0:
+            score = 100.0 if n == 0 else max(0.0, 100.0 - n * 25.0)
+        return CriterionResult(
+            criterion="hashtags",
+            score=score,
+            weight=weight,
+            message=f"Hashtag count: {n}",
+            actual=str(n),
+            expected=f"{ideal_min}-{ideal_max} hashtags" if ideal_max > 0 else "0 hashtags",
+            suggestion=(
+                "Hashtag use is on target." if score >= 70
+                else "Remove hashtags — they don't fit this platform." if ideal_max == 0
+                else f"Use {ideal_min}-{ideal_max} hashtags."
+            ),
+        )
+    return scorer
+
+
+def emoji_count_scorer(ideal_min: int, ideal_max: int, weight: float):
+    def scorer(content: str) -> CriterionResult:
+        n = count_emojis(content)
+        if ideal_min <= n <= ideal_max:
+            score = 100.0
+        elif n < ideal_min:
+            score = (n / max(ideal_min, 1)) * 100.0 if ideal_min > 0 else 100.0
+        else:
+            score = max(0.0, 100.0 - (n - ideal_max) * 20.0)
+        return CriterionResult(
+            criterion="emojis",
+            score=score,
+            weight=weight,
+            message=f"Emoji count: {n}",
+            actual=str(n),
+            expected=f"{ideal_min}-{ideal_max} emojis",
+            suggestion=(
+                "Emoji use is balanced." if score >= 70
+                else f"Use {ideal_min}-{ideal_max} emojis for this platform."
+            ),
+        )
+    return scorer
+
+
+def paragraph_count_scorer(ideal_min: int, weight: float):
+    def scorer(content: str) -> CriterionResult:
+        paragraphs = [p for p in content.split("\n\n") if p.strip()]
+        n = len(paragraphs)
+        if n >= ideal_min + 1:
+            score = 100.0
+        elif n >= ideal_min:
+            score = 85.0
+        else:
+            score = (n / ideal_min) * 70.0 if ideal_min > 0 else 100.0
+        return CriterionResult(
+            criterion="format",
+            score=score,
+            weight=weight,
+            message=f"Paragraph count: {n}",
+            actual=str(n),
+            expected=f"≥{ideal_min} paragraphs",
+            suggestion=(
+                "Good paragraph structure." if score >= 70
+                else "Break content into more paragraphs with line breaks."
+            ),
+        )
+    return scorer
+
+
+def tone_keywords_scorer(name: str, keywords: List[str], ideal_min: int,
+                         ideal_max: int, weight: float):
+    def scorer(content: str) -> CriterionResult:
+        score, found = keyword_density_score(content, keywords, ideal_min, ideal_max)
+        return CriterionResult(
+            criterion=name,
+            score=score,
+            weight=weight,
+            message=f"Found {len(found)} indicator(s): {', '.join(found[:5]) or 'none'}",
+            actual=f"{len(found)} matches",
+            expected=f"{ideal_min}-{ideal_max} indicators",
+            suggestion=(
+                f"Strong {name}." if score >= 70
+                else f"Lean into more {name} language."
+            ),
+        )
+    return scorer
+
+
+def has_cta_scorer(weight: float):
+    cta_keywords = [
+        "register", "sign up", "join", "rsvp", "learn more", "click",
+        "dm", "comment", "follow", "subscribe", "tap", "visit",
+        "신청", "참여", "등록", "확인",
+    ]
+    def scorer(content: str) -> CriterionResult:
+        has = any(k in content.lower() for k in cta_keywords)
+        has_link = has_url(content)
+        score = 100.0 if (has or has_link) else 40.0
+        return CriterionResult(
+            criterion="cta",
+            score=score,
+            weight=weight,
+            message=(
+                "Has clear CTA or link." if score == 100
+                else "No CTA verb or link detected."
+            ),
+            actual="present" if score == 100 else "missing",
+            expected="CTA verb or link",
+            suggestion=(
+                "CTA is clear." if score == 100
+                else "Add a CTA (register / join / link)."
+            ),
+        )
+    return scorer
+
+
+def no_thread_marker_scorer(weight: float):
+    def scorer(content: str) -> CriterionResult:
+        has_marker = bool(THREAD_MARKER_RE.search(content))
+        score = 0.0 if has_marker else 100.0
+        return CriterionResult(
+            criterion="single_post",
+            score=score,
+            weight=weight,
+            message="Thread marker detected" if has_marker else "Single post format",
+            actual="thread marker found" if has_marker else "clean",
+            expected="No '1/', '2/', or 🧵 markers",
+            suggestion=(
+                "Remove thread markers — write one strong post." if has_marker
+                else "Single-post format is correct."
+            ),
+        )
+    return scorer
+
+
+def punchy_opening_scorer(max_chars: int, weight: float):
+    def scorer(content: str) -> CriterionResult:
+        first_line = content.strip().split("\n", 1)[0]
+        n = len(first_line)
+        score = 100.0 if n <= max_chars else max(0.0, 100.0 - (n - max_chars) * 2)
+        return CriterionResult(
+            criterion="punchy_opening",
+            score=score,
+            weight=weight,
+            message=f"First line: {n} chars",
+            actual=f"{n} chars",
+            expected=f"≤{max_chars} chars in first line",
+            suggestion=(
+                "Hook lands fast." if score == 100
+                else "Tighten the first line — it has to stop the scroll."
+            ),
+        )
+    return scorer
+
+
+# ---------------------------------------------------------------------------
+# Platform evaluators
+# ---------------------------------------------------------------------------
+
+LINKEDIN_PRO_KEYWORDS = [
+    "insight", "strategy", "professional", "expertise", "industry",
+    "leadership", "innovation", "growth", "development", "success",
+    "team", "build", "launch", "share",
+]
+
+INSTAGRAM_CASUAL_KEYWORDS = [
+    "you", "your", "we", "our", "love", "excited", "amazing", "join", "check",
+]
+
+KAKAO_DIRECT_KEYWORDS = [
+    "you", "your", "register", "join", "check", "today", "now", "don't miss",
+    "신청", "참여", "확인",
+]
+
+WHATSAPP_WARM_KEYWORDS = [
+    "hey", "quick", "want", "want to", "just", "thought you",
+]
+
+
+class LinkedInEvaluator(ChannelEvaluator):
+    platform = "linkedin"
+    criteria = [
+        Criterion("length", 0.30, char_length_scorer(600, 900, 1100, 1400, 0.30)),
+        Criterion("hashtags", 0.15, hashtag_count_scorer(3, 5, 0.15, zero_above=10)),
+        Criterion("format", 0.20, paragraph_count_scorer(3, 0.20)),
+        Criterion("tone", 0.20, tone_keywords_scorer("professional", LINKEDIN_PRO_KEYWORDS, 2, 5, 0.20)),
+        Criterion("cta", 0.15, has_cta_scorer(0.15)),
+    ]
+
+
+class InstagramEvaluator(ChannelEvaluator):
+    platform = "instagram"
+    criteria = [
+        Criterion("length", 0.25, word_length_scorer(60, 100, 180, 250, 0.25)),
+        Criterion("hashtags", 0.20, hashtag_count_scorer(3, 7, 0.20, zero_above=15)),
+        Criterion("emojis", 0.15, emoji_count_scorer(1, 3, 0.15)),
+        Criterion("tone", 0.20, tone_keywords_scorer("casual", INSTAGRAM_CASUAL_KEYWORDS, 3, 7, 0.20)),
+        Criterion("cta", 0.20, has_cta_scorer(0.20)),
+    ]
+
+
+class CircleEvaluator(ChannelEvaluator):
+    platform = "circle"
+    criteria = [
+        Criterion("length", 0.30, word_length_scorer(300, 500, 800, 1100, 0.30)),
+        Criterion("structure", 0.25, _struct := (lambda c: _circle_structure_scorer(c, 0.25))),
+        Criterion("format", 0.20, _fmt := (lambda c: _circle_format_scorer(c, 0.20))),
+        Criterion("engagement", 0.25, tone_keywords_scorer(
+            "engagement", ["question", "community", "join", "participate", "share", "discuss"], 2, 5, 0.25)),
+    ]
+
+
+def _circle_structure_scorer(content: str, weight: float) -> CriterionResult:
+    headers = has_headers(content)
+    score = 100.0 if headers else 40.0
+    return CriterionResult(
+        criterion="structure",
+        score=score,
+        weight=weight,
+        message="Has section headers" if headers else "No headers found",
+        actual="headers ✓" if headers else "headers ✗",
+        expected="At least one '##' or 'Title:' header",
+        suggestion="Good structure." if headers else "Add '## Heading' sections.",
+    )
+
+
+def _circle_format_scorer(content: str, weight: float) -> CriterionResult:
+    bullets = has_bullets(content)
+    score = 100.0 if bullets else 50.0
+    return CriterionResult(
+        criterion="format",
+        score=score,
+        weight=weight,
+        message="Has bullet points" if bullets else "No bullet points",
+        actual="bullets ✓" if bullets else "bullets ✗",
+        expected="Bullet points (•, -, or *)",
+        suggestion="Good formatting." if bullets else "Add bullet points for scanability.",
+    )
+
+
+class KakaotalkEvaluator(ChannelEvaluator):
+    platform = "kakaotalk"
+    criteria = [
+        Criterion("sentence_count", 0.35, sentence_max_scorer(3, 6, 0.35)),
+        Criterion("hashtags", 0.20, hashtag_count_scorer(0, 0, 0.20)),
+        Criterion("emojis", 0.15, emoji_count_scorer(0, 2, 0.15)),
+        Criterion("cta", 0.30, has_cta_scorer(0.30)),
+    ]
+
+
+class WhatsappEvaluator(ChannelEvaluator):
+    platform = "whatsapp"
+    criteria = [
+        Criterion("sentence_count", 0.25, sentence_max_scorer(4, 8, 0.25)),
+        Criterion("length", 0.25, char_length_scorer(80, 200, 400, 600, 0.25)),
+        Criterion("hashtags", 0.20, hashtag_count_scorer(0, 0, 0.20)),
+        Criterion("emojis", 0.15, emoji_count_scorer(0, 2, 0.15)),
+        Criterion("cta", 0.15, has_cta_scorer(0.15)),
+    ]
+
+
+class XEvaluator(ChannelEvaluator):
+    platform = "x"
+    criteria = [
+        Criterion("char_cap", 0.35, hard_char_cap_scorer(280, 0.35)),
+        Criterion("hashtags", 0.20, hashtag_count_scorer(0, 2, 0.20, zero_above=5)),
+        Criterion("emojis", 0.15, emoji_count_scorer(0, 2, 0.15)),
+        Criterion("single_post", 0.15, no_thread_marker_scorer(0.15)),
+        Criterion("punchy_opening", 0.15, punchy_opening_scorer(80, 0.15)),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+_EVALUATORS = {
+    "linkedin": LinkedInEvaluator,
+    "instagram": InstagramEvaluator,
+    "circle": CircleEvaluator,
+    "kakaotalk": KakaotalkEvaluator,
+    "whatsapp": WhatsappEvaluator,
+    "x": XEvaluator,
+}
+
+
+def get_evaluator(platform: str) -> ChannelEvaluator:
+    cls = _EVALUATORS.get(platform.lower())
+    if not cls:
         raise ValueError(f"Unknown platform: {platform}")
-    
-    return evaluator_class()
+    return cls()
+
+
+def evaluate(platform: str, content: str) -> Dict:
+    """One-shot helper: returns {'total': float, 'criteria': [...]}."""
+    ev = get_evaluator(platform)
+    criteria = ev.evaluate(content)
+    total = round(sum(r["weighted_score"] for r in criteria), 1)
+    return {"platform": platform, "total": total, "criteria": criteria}
