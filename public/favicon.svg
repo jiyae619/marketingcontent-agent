@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Marketing Channel Agent</title>
+  <rect width="64" height="64" rx="14" fill="#1A3C34"/>
+  <path
+    d="M18 38.5V21h5.2l8.8 10.9L40.8 21H46v17.5h-5.4V29l-6.7 8h-3.8l-6.7-8v9.5H18Z"
+    fill="#F9F8F4"
+  />
+  <circle cx="49" cy="17" r="5" fill="#C5A368"/>
+  <path d="M16 46h32" stroke="#C5A368" stroke-width="4" stroke-linecap="round"/>
+</svg>

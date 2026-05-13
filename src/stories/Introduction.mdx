@@ -1,0 +1,50 @@
+# Design System Overview
+
+Welcome to the **Marketing Channel Agent** design system! This Storybook showcases all the reusable React components used in our application.
+
+## 🎨 Design Philosophy
+
+Our design system is built on the following principles:
+
+- **Elegant & Professional**: Using a refined color palette of cream, charcoal, forest green, and gold
+- **Platform-Specific**: Components adapt to different social media platforms
+- **Accessible**: Following best practices for accessibility
+- **Consistent**: Reusable components ensure design consistency
+
+## 🎯 Key Features
+
+### Design Tokens
+All design values (colors, spacing, typography) are defined as CSS custom properties for easy theming and consistency.
+
+### Component Library
+- **UI Components**: Buttons, Cards, Inputs, Badges
+- **Platform Components**: Selectors, Tabs, Previews
+- **Status Components**: Messages, Loading states
+
+### Platform Previews
+Realistic mockups for:
+- LinkedIn (522px width)
+- Instagram (446px width)
+- CIRCLE (630px width)
+- Kakaotalk (375px mobile width)
+
+## 🚀 Getting Started
+
+Browse the components in the sidebar to see interactive examples with customizable controls.
+
+## 📖 Usage
+
+All components are built with React and use existing CSS classes from our global stylesheet. Import and use them in your application:
+
+```javascript
+import { Button } from './components/Button/Button';
+import { Card } from './components/Card/Card';
+
+function MyComponent() {
+  return (
+    <Card title="Hello">
+      <Button variant="primary">Click me!</Button>
+    </Card>
+  );
+}
+```
