@@ -125,6 +125,22 @@ CREATE TABLE IF NOT EXISTS feedback_events (
 CREATE INDEX IF NOT EXISTS idx_fb_platform_created
     ON feedback_events(platform, created_at DESC);
 
+-- judge_results: machine grades from the LLM-as-judge pipeline, linked to the
+-- generation. Distinct from feedback_events (those are HUMAN verdicts); these are
+-- MODEL verdicts. Per-category scores stored as JSON.
+CREATE TABLE IF NOT EXISTS judge_results (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    generation_id INTEGER REFERENCES generations(id) ON DELETE SET NULL,
+    platform      TEXT NOT NULL,
+    judge_model   TEXT NOT NULL,
+    overall       INTEGER,
+    safety_pass   INTEGER,        -- 0 / 1 / NULL
+    scores        TEXT,           -- JSON: {category: {score, reason}}
+    created_at    REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_judge_gen ON judge_results(generation_id);
+
 CREATE INDEX IF NOT EXISTS idx_gen_platform_created
     ON generations(platform, created_at DESC);
 
@@ -268,6 +284,29 @@ def get_generation(generation_id: int) -> Optional[Dict]:
             "SELECT * FROM generations WHERE id = ?", (generation_id,)
         ).fetchone()
         return dict(row) if row else None
+
+
+def log_judge_result(*, generation_id: Optional[int], platform: str, judge_model: str,
+                     overall: Optional[int] = None, safety_pass: Optional[bool] = None,
+                     scores: Optional[Dict] = None) -> int:
+    """Persist one machine judge verdict, linked to its generation. Returns row id.
+
+    Distinct from log_feedback (human verdicts) — this records what the LLM judge
+    graded. `scores` is the per-category dict; stored as JSON.
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO judge_results
+                (generation_id, platform, judge_model, overall, safety_pass, scores, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (generation_id, platform, judge_model, overall,
+             None if safety_pass is None else (1 if safety_pass else 0),
+             json.dumps(scores) if scores is not None else None,
+             time.time()),
+        )
+        return cur.lastrowid
 
 
 def is_genuine_content(text: Optional[str]) -> bool:

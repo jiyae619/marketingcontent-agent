@@ -16,10 +16,8 @@ import providers
 from feedback_db import FLAG_TAXONOMY
 
 
-# The judge models offered to the UI dropdown. ONE registry, one source of truth:
-# add/remove a row here and the dropdown updates with it — no other change needed.
-# (key, display label, model_id, provider_fn). Order = display order.
-JUDGE_MODELS = [
+# Cloud judge models. (key, display label, model_id, provider_fn), display order.
+_CLOUD_JUDGE_MODELS = [
     ("claude-sonnet", "Claude Sonnet 4.6", "claude-sonnet-4-6",         providers.call_anthropic),
     ("gpt-4o-mini",   "GPT-4o mini",       "gpt-4o-mini",               providers.call_openai),
     ("claude-haiku",  "Claude Haiku 4.5",  "claude-haiku-4-5-20251001", providers.call_anthropic),
@@ -28,6 +26,22 @@ JUDGE_MODELS = [
 
 # Default judge when the caller doesn't pick one. Overridable via env.
 DEFAULT_JUDGE_KEY = os.getenv("JUDGE_MODEL", "claude-sonnet")
+
+
+def _local_judge_entry():
+    """Local-LLM registry row, reflecting current env config. Always offered so the
+    dropdown can pick 'run it locally'; label shows the configured model or a hint."""
+    model = os.getenv("LOCAL_LLM_MODEL")
+    base = os.getenv("LOCAL_LLM_BASE_URL")
+    label = f"Local — {model}" if (model and base) else "Local (set LOCAL_LLM_BASE_URL + LOCAL_LLM_MODEL)"
+    return ("local", label, model or "local", providers.call_local)
+
+
+def judge_models():
+    """The full judge registry: cloud models + the local option. Read fresh each
+    call so a change to LOCAL_LLM_MODEL shows up without a restart. This is the
+    ONE source of truth the UI dropdown reads (GET /api/judge/models)."""
+    return [*_CLOUD_JUDGE_MODELS, _local_judge_entry()]
 
 # What the judge scores. Categories are keyed to FLAG_TAXONOMY; each string tells
 # the judge what the category means. The family (grounding/voice) comes from the
@@ -43,11 +57,11 @@ JUDGE_RUBRIC = {
 def available_models():
     """Registry for the UI dropdown (GET /api/judge/models)."""
     return [{"key": key, "label": label, "model": model_id}
-            for (key, label, model_id, _fn) in JUDGE_MODELS]
+            for (key, label, model_id, _fn) in judge_models()]
 
 
 def _by_key():
-    return {key: (label, model_id, fn) for (key, label, model_id, fn) in JUDGE_MODELS}
+    return {key: (label, model_id, fn) for (key, label, model_id, fn) in judge_models()}
 
 
 def resolve_judge(model_key=None, generator_model=None):
@@ -58,7 +72,7 @@ def resolve_judge(model_key=None, generator_model=None):
     """
     reg = _by_key()
     tried = []
-    for key in [model_key, DEFAULT_JUDGE_KEY, *[k for (k, *_rest) in JUDGE_MODELS]]:
+    for key in [model_key, DEFAULT_JUDGE_KEY, *[k for (k, *_rest) in judge_models()]]:
         if not key or key in tried:
             continue
         tried.append(key)

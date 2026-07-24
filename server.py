@@ -314,6 +314,19 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             except ValueError as ve:
                 self._json(400, {'error': str(ve)})
                 return
+            # Persist a successful verdict when it grades a tracked generation.
+            if verdict.get('ok') and gen_id is not None:
+                try:
+                    row_id = feedback_db.log_judge_result(
+                        generation_id=gen_id, platform=platform,
+                        judge_model=verdict.get('judge_model'),
+                        overall=verdict.get('overall'),
+                        safety_pass=verdict.get('safety_pass'),
+                        scores=verdict.get('scores'),
+                    )
+                    verdict['judge_result_id'] = row_id
+                except Exception as e:
+                    print(f"[judge] persist failed: {e}")
             print(f"[judge] {platform} model={verdict.get('judge_model')} "
                   f"ok={verdict.get('ok')} overall={verdict.get('overall')}")
             self._json(200, verdict)

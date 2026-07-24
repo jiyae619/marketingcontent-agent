@@ -172,6 +172,52 @@ def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001") -> dic
         return _empty_result(model, f"Anthropic error: {e}")
 
 
+def call_local(prompt: str, model: str = None) -> dict:
+    """Call a locally-run LLM via an OpenAI-compatible endpoint.
+
+    Works with Ollama, LM Studio, llama.cpp server, vLLM, etc. — anything that
+    serves POST /chat/completions in the OpenAI shape. Configured by env:
+        LOCAL_LLM_BASE_URL  e.g. http://localhost:11434/v1  (Ollama)
+                            or   http://localhost:1234/v1   (LM Studio)
+        LOCAL_LLM_MODEL     e.g. llama3.1:8b, qwen2.5:7b
+        LOCAL_LLM_API_KEY   optional; most local servers ignore it
+    Cost is 0 — it runs on your machine.
+    """
+    base = os.getenv("LOCAL_LLM_BASE_URL")
+    model = model or os.getenv("LOCAL_LLM_MODEL")
+    if not base:
+        return _empty_result(model or "local", "LOCAL_LLM_BASE_URL not set")
+    if not model:
+        return _empty_result("local", "LOCAL_LLM_MODEL not set")
+    key = os.getenv("LOCAL_LLM_API_KEY", "not-needed")
+    t0 = time.time()
+    try:
+        data = _post_json(
+            base.rstrip("/") + "/chat/completions",
+            {"model": model, "messages": [{"role": "user", "content": prompt}]},
+            headers={"Authorization": f"Bearer {key}"},
+            timeout=120,  # local models can be slower than hosted APIs
+        )
+        choice = (data.get("choices") or [{}])[0]
+        text = choice.get("message", {}).get("content", "")
+        usage = data.get("usage", {}) or {}
+        return {
+            "ok": bool(text), "text": text or None, "model": model,
+            "input_tokens": int(usage.get("prompt_tokens", 0)),
+            "output_tokens": int(usage.get("completion_tokens", 0)),
+            "cost_usd": 0.0,  # local = free
+            "latency_ms": int((time.time() - t0) * 1000),
+            "error": None if text else "Empty response from local LLM",
+        }
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        return _empty_result(model, f"Local LLM {e.code}: {body[:200]}")
+    except urllib.error.URLError as e:
+        return _empty_result(model, f"Local LLM unreachable at {base} ({e.reason}) — is the server running?")
+    except Exception as e:
+        return _empty_result(model, f"Local LLM error: {e}")
+
+
 # Models the /api/compare endpoint fans out to. Order matters: it's the display order.
 COMPARE_MODELS = [
     ("gemini",            "gemini-2.5-flash",          call_gemini),
