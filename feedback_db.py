@@ -217,31 +217,19 @@ def make_cache_key(platform: str, user_input: str, link_url: str,
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-def cache_get(key: str) -> Optional[Dict]:
-    """Return cached generation or None."""
+def generation_by_cache_key(cache_key: str) -> Optional[Dict]:
+    """Return the generation row that IS this cache entry, or None.
+
+    The cache is not a separate content copy: a generation is logged with its
+    cache_key (see log_generation), so a hit returns a real generation — content,
+    id, and provenance — and an approval linked to cached content can never be
+    orphaned. Supersedes the old cache_get/cache_set + generation_cache table.
+    """
     with _connect() as conn:
         row = conn.execute(
-            "SELECT content, eval_score FROM generation_cache WHERE cache_key = ?",
-            (key,),
+            "SELECT * FROM generations WHERE cache_key = ?", (cache_key,)
         ).fetchone()
         return dict(row) if row else None
-
-
-def cache_set(key: str, platform: str, content: str,
-              eval_score: Optional[float] = None) -> None:
-    """Store a generation in cache."""
-    with _connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO generation_cache (cache_key, platform, content, eval_score, created_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(cache_key) DO UPDATE SET
-                content = excluded.content,
-                eval_score = excluded.eval_score,
-                created_at = excluded.created_at
-            """,
-            (key, platform, content, eval_score, time.time()),
-        )
 
 
 def copy_count(platform: str) -> int:

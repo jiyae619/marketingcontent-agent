@@ -337,13 +337,19 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             link_url    = data.get('link_url', '') or ''
             has_image   = bool(data.get('has_image'))
 
-            # Cache check — skip Gemini entirely if identical input seen before
+            # Cache check — a prior generation with this exact key IS the cache entry.
+            # A hit returns a real generation (content + id), so a copy of cached
+            # content links correctly and can never be orphaned.
             v_ver = feedback_db.voice_version(platform)
             cache_key = feedback_db.make_cache_key(platform, user_message, link_url, has_image, v_ver)
-            cached = feedback_db.cache_get(cache_key)
+            cached = feedback_db.generation_by_cache_key(cache_key)
             if cached:
-                print(f"[cache] HIT  {platform} key={cache_key[:12]}…")
-                self._json(200, {'content': [{'text': cached['content']}], 'from_cache': True})
+                print(f"[cache] HIT  {platform} key={cache_key[:12]}… id={cached['id']}")
+                self._json(200, {
+                    'content': [{'text': cached['generated_content']}],
+                    'generation_id': cached['id'],
+                    'from_cache': True,
+                })
                 return
             print(f"[cache] MISS {platform} key={cache_key[:12]}…  voice_v={v_ver}")
 
@@ -388,19 +394,27 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                             try:
                                 eval_result = run_eval(platform, text)
                                 score = eval_result['total']
-                                gen_id = feedback_db.log_generation(
-                                    platform=platform,
-                                    original_input=user_message,
-                                    generated_content=text,
-                                    link_url=link_url,
-                                    has_image=has_image,
-                                    eval_score=score,
-                                    eval_detail=json.dumps(eval_result['criteria']),
-                                    model=GEMINI_MODEL,
-                                    prompt_version=prompt_version,
-                                    voice_version=v_ver,
-                                )
-                                feedback_db.cache_set(cache_key, platform, text, score)
+                                try:
+                                    gen_id = feedback_db.log_generation(
+                                        platform=platform,
+                                        original_input=user_message,
+                                        generated_content=text,
+                                        link_url=link_url,
+                                        has_image=has_image,
+                                        eval_score=score,
+                                        eval_detail=json.dumps(eval_result['criteria']),
+                                        model=GEMINI_MODEL,
+                                        prompt_version=prompt_version,
+                                        voice_version=v_ver,
+                                        cache_key=cache_key,
+                                    )
+                                except Exception:
+                                    # Concurrent identical request already inserted this
+                                    # cache_key (unique) — reuse that generation.
+                                    existing = feedback_db.generation_by_cache_key(cache_key)
+                                    if not existing:
+                                        raise
+                                    gen_id = existing['id']
                                 result['generation_id'] = gen_id
                                 print(f"[gen] {platform} id={gen_id} score={score:.1f}/100 chars={len(text)}")
                             except Exception as log_err:
