@@ -93,12 +93,17 @@ def _build_prompt(platform, content):
     return (
         "You are a strict quality-and-safety judge for marketing content.\n"
         f"Platform: {platform}\n\n"
-        "For each criterion, reason in one short phrase, then score 0-100 "
-        "(0 = fails badly, 100 = perfect). Then give an overall 0-100 and a "
-        "safety_pass boolean (false if any grounding criterion is a serious fail).\n\n"
+        "For EACH criterion, give a substantive reason (1-3 sentences): quote the "
+        "specific words in the content that drive the score and explain WHY it earns "
+        "that score — do not just restate the criterion. Then score 0-100 "
+        "(0 = fails badly, 100 = perfect).\n"
+        "Then give an overall 0-100, a safety_pass boolean (false if any grounding "
+        "criterion is a serious fail), and a `summary`: 2-4 sentences covering the "
+        "main strength, the main problem, and the single change that would most raise "
+        "the score.\n\n"
         "Return ONLY a JSON object, no prose or markdown fences, of the form:\n"
-        '{"scores": {"<category>": {"score": <int>, "reason": "<phrase>"}, ...}, '
-        '"overall": <int>, "safety_pass": <bool>}\n\n'
+        '{"scores": {"<category>": {"score": <int>, "reason": "<1-3 sentences citing specific text>"}, ...}, '
+        '"overall": <int>, "safety_pass": <bool>, "summary": "<2-4 sentence rationale>"}\n\n'
         f"Criteria:\n{criteria}\n\n"
         f'Content to judge:\n"""\n{content}\n"""\n'
     )
@@ -148,4 +153,5 @@ def judge(content, platform, *, model=None, generator_model=None):
     verdict["scores"] = parsed.get("scores", {})
     verdict["overall"] = parsed.get("overall")
     verdict["safety_pass"] = parsed.get("safety_pass")
+    verdict["summary"] = parsed.get("summary")
     return verdict

@@ -90,6 +90,14 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                              'default': judge.DEFAULT_JUDGE_KEY})
             return
 
+        # Flag taxonomy for the review UI's flag chips — one source of truth.
+        if self.path == '/api/flags':
+            self._json(200, {'taxonomy': [
+                {'category': c, 'family': f}
+                for c, f in feedback_db.FLAG_TAXONOMY.items()
+            ]})
+            return
+
         # Latest machine judge verdict for a generation (async grade retrieval).
         if self.path.startswith('/api/judge/result'):
             from urllib.parse import urlparse, parse_qs
@@ -202,7 +210,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             print(f"[voice] synthesis failed for {platform}: {e}")
     
-    def _maybe_judge(self, platform, content, generation_id, heuristic_score):
+    def _maybe_judge(self, platform, content, generation_id, heuristic_score, judge_model=None):
         """Tiered cascade step (runs in a background thread, never blocks generation).
 
         Skips when the heuristic already scored the content at/above the trigger
@@ -213,7 +221,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         try:
             if heuristic_score is not None and heuristic_score >= JUDGE_TRIGGER_THRESHOLD:
                 return  # heuristic says it's good enough — skip the paid judge tier
-            verdict = judge.judge(content, platform, generator_model=GEMINI_MODEL)
+            verdict = judge.judge(content, platform, model=judge_model, generator_model=GEMINI_MODEL)
             if not verdict.get('ok'):
                 print(f"[judge] gen {generation_id} not judged: {verdict.get('error')}")
                 return
@@ -223,6 +231,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 overall=verdict.get('overall'),
                 safety_pass=verdict.get('safety_pass'),
                 scores=verdict.get('scores'),
+                summary=verdict.get('summary'),
             )
             print(f"[judge] gen {generation_id} judged by {verdict.get('judge_model')} "
                   f"overall={verdict.get('overall')} safety_pass={verdict.get('safety_pass')}")
@@ -273,7 +282,8 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 })
                 return
 
-        # /api/copies — user copied/approved content (writes a verdict event)
+        # /api/copies — human verdict on generated content (approve / edit / reject),
+        # optionally carrying one flag from the shared taxonomy.
         if self.path == '/api/copies':
             try:
                 length = int(self.headers.get('Content-Length', '0'))
@@ -281,53 +291,66 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 platform = payload.get('platform', '').lower()
                 final = payload.get('final_content', '')
                 gen_id = payload.get('generation_id')
-                if platform not in VALID_PLATFORMS or not final.strip():
-                    self._json(400, {'error': 'platform and final_content required'})
+                verdict_override = payload.get('verdict')       # explicit, e.g. 'reject'
+                flag_category = payload.get('flag_category')    # optional taxonomy flag
+                if platform not in VALID_PLATFORMS:
+                    self._json(400, {'error': 'platform required'})
                     return
-                # Reject non-genuine content (error strings / placeholder) so it
-                # can never enter voice training.
-                if not feedback_db.is_genuine_content(final):
-                    self._json(400, {'error': 'final_content is not genuine content'})
-                    return
-                # Look up the linked generation to verify it belongs to this
-                # platform and to classify approve vs edit by comparing texts.
+
+                # Resolve the linked generation once: verify platform + get the
+                # original text (used to classify approve vs edit).
                 original = None
                 if gen_id is not None:
                     gen = feedback_db.get_generation(gen_id)
                     if gen is None:
-                        # Dangling id (e.g. a rotated DB) — record the approval
-                        # unlinked rather than dropping the signal.
-                        gen_id = None
+                        gen_id = None  # dangling id — record unlinked rather than drop
                     elif gen['platform'] != platform:
                         self._json(400, {'error': 'generation_id does not match platform'})
                         return
                     else:
                         original = gen['generated_content']
-                verdict = feedback_db.classify_verdict(original, final)
+
+                if verdict_override == 'reject':
+                    # Reject: no approved content — record the rejection (+ flag).
+                    verdict = 'reject'
+                    final_content = None
+                else:
+                    # Approve / edit: require genuine content; classify from the text.
+                    if not final.strip():
+                        self._json(400, {'error': 'final_content required'})
+                        return
+                    if not feedback_db.is_genuine_content(final):
+                        self._json(400, {'error': 'final_content is not genuine content'})
+                        return
+                    verdict = feedback_db.classify_verdict(original, final)
+                    final_content = final
+
                 try:
                     row_id = feedback_db.log_feedback(
                         generation_id=gen_id,
                         platform=platform,
                         verdict=verdict,
                         original_content=original,
-                        final_content=final,
+                        final_content=final_content,
+                        flag_category=flag_category,
                     )
                 except ValueError as ve:
                     self._json(400, {'error': str(ve)})
                     return
                 print(f"[feedback] {platform} {verdict} id={row_id} gen={gen_id} "
-                      f"chars={len(final)} voice_v={feedback_db.voice_version(platform)}")
+                      f"flag={flag_category or '-'} voice_v={feedback_db.voice_version(platform)}")
                 self._json(200, {'id': row_id, 'platform': platform, 'verdict': verdict})
 
-                # Trigger voice synthesis if enough samples accumulated (async-ish)
-                api_key = os.getenv('GEMINI_API_KEY')
-                if api_key:
-                    import threading
-                    threading.Thread(
-                        target=self._maybe_synthesize_voice,
-                        args=(platform, api_key),
-                        daemon=True,
-                    ).start()
+                # Voice synthesis only learns from accepted content (approve/edit).
+                if verdict in ('approve', 'edit'):
+                    api_key = os.getenv('GEMINI_API_KEY')
+                    if api_key:
+                        import threading
+                        threading.Thread(
+                            target=self._maybe_synthesize_voice,
+                            args=(platform, api_key),
+                            daemon=True,
+                        ).start()
             except Exception as e:
                 self._json(500, {'error': str(e)})
             return
@@ -373,6 +396,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                         overall=verdict.get('overall'),
                         safety_pass=verdict.get('safety_pass'),
                         scores=verdict.get('scores'),
+                        summary=verdict.get('summary'),
                     )
                     verdict['judge_result_id'] = row_id
                 except Exception as e:
@@ -473,6 +497,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             user_message = data.get('messages', [{}])[0].get('content', '')
             link_url    = data.get('link_url', '') or ''
             has_image   = bool(data.get('has_image'))
+            judge_model = data.get('judge_model')  # optional: chosen in the UI dropdown
 
             # Cache check — a prior generation with this exact key IS the cache entry.
             # A hit returns a real generation (content + id), so a copy of cached
@@ -560,7 +585,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                                     import threading
                                     threading.Thread(
                                         target=self._maybe_judge,
-                                        args=(platform, text, gen_id, score),
+                                        args=(platform, text, gen_id, score, judge_model),
                                         daemon=True,
                                     ).start()
                             except Exception as log_err:

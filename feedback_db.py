@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS judge_results (
     overall       INTEGER,
     safety_pass   INTEGER,        -- 0 / 1 / NULL
     scores        TEXT,           -- JSON: {category: {score, reason}}
+    summary       TEXT,           -- overall rationale (main strength/problem/fix)
     created_at    REAL NOT NULL
 );
 
@@ -205,6 +206,15 @@ def _migrate() -> None:
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_gen_cache_key ON generations(cache_key)"
         )
+        # judge_results columns added after the table first shipped.
+        jr_existing = {row[1] for row in conn.execute("PRAGMA table_info(judge_results)")}
+        for col, decl in (("summary", "TEXT"),):
+            if col not in jr_existing:
+                try:
+                    conn.execute(f"ALTER TABLE judge_results ADD COLUMN {col} {decl}")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise
         _backfill_copies_to_feedback(conn)
         conn.commit()
     finally:
@@ -288,23 +298,25 @@ def get_generation(generation_id: int) -> Optional[Dict]:
 
 def log_judge_result(*, generation_id: Optional[int], platform: str, judge_model: str,
                      overall: Optional[int] = None, safety_pass: Optional[bool] = None,
-                     scores: Optional[Dict] = None) -> int:
+                     scores: Optional[Dict] = None, summary: Optional[str] = None) -> int:
     """Persist one machine judge verdict, linked to its generation. Returns row id.
 
     Distinct from log_feedback (human verdicts) — this records what the LLM judge
-    graded. `scores` is the per-category dict; stored as JSON.
+    graded. `scores` is the per-category dict (stored as JSON); `summary` is the
+    judge's overall rationale.
     """
     with _connect() as conn:
         cur = conn.execute(
             """
             INSERT INTO judge_results
-                (generation_id, platform, judge_model, overall, safety_pass, scores, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (generation_id, platform, judge_model, overall, safety_pass,
+                 scores, summary, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (generation_id, platform, judge_model, overall,
              None if safety_pass is None else (1 if safety_pass else 0),
              json.dumps(scores) if scores is not None else None,
-             time.time()),
+             summary, time.time()),
         )
         return cur.lastrowid
 
