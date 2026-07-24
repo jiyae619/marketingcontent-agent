@@ -31,6 +31,13 @@ PASSWORD_REQUIRED_MESSAGE = (
 
 GEMINI_MODEL = 'gemini-2.5-flash'
 
+# Tiered eval cascade: heuristic (always, free) -> LLM judge (only on flagged
+# content) -> human. After a new generation, the judge runs in the background
+# when the heuristic score is below the trigger threshold AND a non-generator
+# judge model is reachable; otherwise it no-ops. Both configurable via env.
+JUDGE_ON_GENERATE = os.getenv('JUDGE_ON_GENERATE', 'true').strip().lower() not in ('0', 'false', 'no', 'off')
+JUDGE_TRIGGER_THRESHOLD = float(os.getenv('JUDGE_TRIGGER_THRESHOLD', '70'))
+
 
 def _prompt_hash(channel_template: str) -> str:
     """Version fingerprint of a channel prompt template.
@@ -81,6 +88,22 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         if self.path == '/api/judge/models':
             self._json(200, {'models': judge.available_models(),
                              'default': judge.DEFAULT_JUDGE_KEY})
+            return
+
+        # Latest machine judge verdict for a generation (async grade retrieval).
+        if self.path.startswith('/api/judge/result'):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            gid = (q.get('generation_id') or [None])[0]
+            if not gid:
+                self._json(400, {'error': 'generation_id required'})
+                return
+            try:
+                result = feedback_db.get_judge_result(int(gid))
+            except ValueError:
+                self._json(400, {'error': 'generation_id must be an integer'})
+                return
+            self._json(200, result or {})
             return
 
         # Light dashboard for the dev — backend-only signal
@@ -179,6 +202,33 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             print(f"[voice] synthesis failed for {platform}: {e}")
     
+    def _maybe_judge(self, platform, content, generation_id, heuristic_score):
+        """Tiered cascade step (runs in a background thread, never blocks generation).
+
+        Skips when the heuristic already scored the content at/above the trigger
+        threshold — the LLM judge tier is spent only on flagged content. No-ops
+        gracefully when no non-generator judge model is reachable (judge != generator
+        needs a second provider). Persists the verdict to judge_results.
+        """
+        try:
+            if heuristic_score is not None and heuristic_score >= JUDGE_TRIGGER_THRESHOLD:
+                return  # heuristic says it's good enough — skip the paid judge tier
+            verdict = judge.judge(content, platform, generator_model=GEMINI_MODEL)
+            if not verdict.get('ok'):
+                print(f"[judge] gen {generation_id} not judged: {verdict.get('error')}")
+                return
+            feedback_db.log_judge_result(
+                generation_id=generation_id, platform=platform,
+                judge_model=verdict.get('judge_model'),
+                overall=verdict.get('overall'),
+                safety_pass=verdict.get('safety_pass'),
+                scores=verdict.get('scores'),
+            )
+            print(f"[judge] gen {generation_id} judged by {verdict.get('judge_model')} "
+                  f"overall={verdict.get('overall')} safety_pass={verdict.get('safety_pass')}")
+        except Exception as e:
+            print(f"[judge] background judge failed for gen {generation_id}: {e}")
+
     def load_prompt_from_md(self, platform):
         """Extract AI Prompt section from markdown file"""
         md_path = f'docs/{platform}.md'
@@ -504,6 +554,15 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                                     gen_id = existing['id']
                                 result['generation_id'] = gen_id
                                 print(f"[gen] {platform} id={gen_id} score={score:.1f}/100 chars={len(text)}")
+                                # Tiered cascade: heuristic already ran; if it flagged
+                                # this generation, judge it in the background (async).
+                                if JUDGE_ON_GENERATE:
+                                    import threading
+                                    threading.Thread(
+                                        target=self._maybe_judge,
+                                        args=(platform, text, gen_id, score),
+                                        daemon=True,
+                                    ).start()
                             except Exception as log_err:
                                 print(f"[gen] log failed for {platform}: {log_err}")
                     else:

@@ -309,6 +309,25 @@ def log_judge_result(*, generation_id: Optional[int], platform: str, judge_model
         return cur.lastrowid
 
 
+def get_judge_result(generation_id: int) -> Optional[Dict]:
+    """Latest machine judge verdict for a generation, or None. `scores` parsed from JSON."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM judge_results WHERE generation_id = ? "
+            "ORDER BY created_at DESC LIMIT 1",
+            (generation_id,),
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        if d.get("scores"):
+            try:
+                d["scores"] = json.loads(d["scores"])
+            except Exception:
+                pass
+        return d
+
+
 def is_genuine_content(text: Optional[str]) -> bool:
     """False for content that must never enter voice training: empty/whitespace,
     error strings, or the 'Generating...' placeholder.
