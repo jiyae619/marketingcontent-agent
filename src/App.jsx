@@ -147,7 +147,9 @@ function App() {
 
           if (response.status === 401) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || PREVIEW_BLOCK_MESSAGE);
+            const authError = new Error(errorData.message || PREVIEW_BLOCK_MESSAGE);
+            authError.authFailed = true;
+            throw authError;
           }
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -170,12 +172,12 @@ function App() {
             ...prevContent,
             [platform]: content,
           }));
-          return { platform, content };
+          return { platform, content, authFailed: Boolean(error.authFailed) };
         }
       });
 
       const results = await Promise.all(promises);
-      const authFailure = results.find(r => r.content.startsWith('Error:') && r.content.includes(PREVIEW_BLOCK_MESSAGE));
+      const authFailure = results.some(r => r.authFailed);
       if (authFailure) {
         localStorage.removeItem(PW_KEY);
         setPassword('');
