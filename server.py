@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tes
 import feedback_db
 from evaluators import evaluate as run_eval
 import providers
+import judge
 from concurrent.futures import ThreadPoolExecutor
 
 feedback_db.init_db()
@@ -74,6 +75,12 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 self._json(200, {'platform': platform, 'prompt': prompt})
             except Exception as e:
                 self._json(500, {'error': f'Failed to load prompt: {str(e)}'})
+            return
+
+        # Available judge models — the single source the UI dropdown reads.
+        if self.path == '/api/judge/models':
+            self._json(200, {'models': judge.available_models(),
+                             'default': judge.DEFAULT_JUDGE_KEY})
             return
 
         # Light dashboard for the dev — backend-only signal
@@ -208,7 +215,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
     
     def do_POST(self):
         # Generation endpoints all require the shared password.
-        if self.path in ('/api/copies', '/api/gemini', '/api/compare'):
+        if self.path in ('/api/copies', '/api/gemini', '/api/compare', '/api/judge'):
             if not self._password_ok():
                 self._json(401, {
                     'error': 'password_required',
@@ -273,6 +280,43 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                     ).start()
             except Exception as e:
                 self._json(500, {'error': str(e)})
+            return
+
+        # /api/judge — grade content against the flag taxonomy with a swappable
+        # judge model (judge != generator). Returns the verdict in memory.
+        if self.path == '/api/judge':
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                payload = json.loads(self.rfile.read(length).decode('utf-8'))
+            except Exception as e:
+                self._json(400, {'error': f'bad json: {e}'})
+                return
+
+            platform = (payload.get('platform') or '').lower()
+            content = payload.get('content') or ''
+            if platform not in VALID_PLATFORMS or not content.strip():
+                self._json(400, {'error': 'platform and content required'})
+                return
+
+            model = payload.get('model')  # judge model key (from the dropdown), optional
+            generator_model = payload.get('generator_model')
+            gen_id = payload.get('generation_id')
+            # If we know the generation, use its recorded model (provenance from the
+            # data spine) to enforce judge != generator automatically.
+            if generator_model is None and gen_id is not None:
+                g = feedback_db.get_generation(gen_id)
+                if g:
+                    generator_model = g.get('model')
+
+            try:
+                verdict = judge.judge(content, platform,
+                                      model=model, generator_model=generator_model)
+            except ValueError as ve:
+                self._json(400, {'error': str(ve)})
+                return
+            print(f"[judge] {platform} model={verdict.get('judge_model')} "
+                  f"ok={verdict.get('ok')} overall={verdict.get('overall')}")
+            self._json(200, verdict)
             return
 
         # /api/compare — fan out the same prompt to every configured provider
