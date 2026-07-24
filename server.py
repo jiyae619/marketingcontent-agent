@@ -78,7 +78,10 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
 
         # Light dashboard for the dev — backend-only signal
         if self.path == '/api/admin/stats':
-            self._json(200, {'platforms': feedback_db.stats_by_platform()})
+            self._json(200, {
+                'platforms': feedback_db.stats_by_platform(),
+                'hands_on_time': feedback_db.hands_on_time_stats(),
+            })
             return
 
         # Default: serve static files

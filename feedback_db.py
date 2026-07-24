@@ -11,10 +11,16 @@ import hashlib
 import json
 import os
 import sqlite3
+import statistics
 import sys
 import time
 from contextlib import contextmanager
 from typing import Dict, List, Optional
+
+# Provisional inactivity gap that bounds a "session". Deliberately NOT tuned from
+# current timestamps (they are dev/test noise, not real work sessions) — revisit
+# once real usage accrues.
+SESSION_GAP_SECONDS = 30 * 60
 
 DB_PATH = os.environ.get("FEEDBACK_DB_PATH", "testing/results/feedback.db")
 
@@ -497,6 +503,59 @@ def stats_by_platform() -> List[Dict]:
             """
         )
         return [dict(r) for r in cur.fetchall()]
+
+
+def hands_on_time_stats() -> Dict:
+    """Per-session hands-on time: first generation → last approval.
+
+    Buckets generation timestamps and approve-event timestamps (cross-platform,
+    since one brief fans out to several channels) into sessions by an inactivity
+    gap. "Final approval" is the last `approve` verdict in a session. A session
+    with no approval is incomplete and excluded from the median; a session whose
+    last approval precedes its first generation is dropped.
+
+    Returns {sessions, completed_sessions, median_seconds, durations_seconds}.
+    """
+    with _connect() as conn:
+        events = [(r[0], "gen") for r in conn.execute(
+            "SELECT created_at FROM generations WHERE created_at IS NOT NULL"
+        )]
+        events += [(r[0], "approve") for r in conn.execute(
+            "SELECT created_at FROM feedback_events WHERE verdict = 'approve'"
+        )]
+
+    events.sort(key=lambda e: e[0])
+    if not events:
+        return {"sessions": 0, "completed_sessions": 0,
+                "median_seconds": None, "durations_seconds": []}
+
+    sessions: List[List] = []
+    current = [events[0]]
+    for ev in events[1:]:
+        if ev[0] - current[-1][0] > SESSION_GAP_SECONDS:
+            sessions.append(current)
+            current = [ev]
+        else:
+            current.append(ev)
+    sessions.append(current)
+
+    durations: List[float] = []
+    for s in sessions:
+        gen_times = [t for t, kind in s if kind == "gen"]
+        approve_times = [t for t, kind in s if kind == "approve"]
+        if not gen_times or not approve_times:
+            continue  # incomplete: no generation or no approval to bound it
+        dur = max(approve_times) - min(gen_times)
+        if dur < 0:
+            continue  # last approval precedes first generation — drop
+        durations.append(dur)
+
+    return {
+        "sessions": len(sessions),
+        "completed_sessions": len(durations),
+        "median_seconds": statistics.median(durations) if durations else None,
+        "durations_seconds": durations,
+    }
 
 
 if __name__ == "__main__":
