@@ -18,6 +18,19 @@ from typing import Dict, List, Optional
 
 DB_PATH = os.environ.get("FEEDBACK_DB_PATH", "testing/results/feedback.db")
 
+# Shared flag taxonomy — ONE source of truth for human flags now and the LLM
+# judge's scoring criteria later. Two families: grounding (fix = better facts /
+# retrieval) and voice (fix = the learning loop). Extend by adding entries; new
+# categories need no migration since they are validated in code, not schema.
+FLAG_TAXONOMY = {
+    "hallucination":  "grounding",   # fabricated facts about the speaker/event
+    "irrelevant":     "grounding",   # generic / off-brief; misses what matters
+    "ai_slop":        "voice",       # robotic, generic AI tone; needs humanizing
+    "kr_en_register": "voice",       # right facts, wrong Korean/English register
+}
+
+VALID_VERDICTS = ("approve", "edit", "reject")
+
 
 def _ensure_dir() -> None:
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -75,6 +88,24 @@ CREATE TABLE IF NOT EXISTS schema_meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- feedback_events: the unified verdict stream (approve/edit/reject), canonical
+-- source superseding `copies`. Each event links to its generation and may carry
+-- one flag (category + family). Edits keep both original and final text.
+CREATE TABLE IF NOT EXISTS feedback_events (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    generation_id    INTEGER REFERENCES generations(id) ON DELETE SET NULL,
+    platform         TEXT NOT NULL,
+    verdict          TEXT NOT NULL,   -- approve | edit | reject
+    flag_category    TEXT,            -- nullable; must be in FLAG_TAXONOMY
+    flag_family      TEXT,            -- nullable; derived from the category
+    original_content TEXT,            -- generation text at verdict time (nullable)
+    final_content    TEXT,            -- human-final text (nullable for reject)
+    created_at       REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_fb_platform_created
+    ON feedback_events(platform, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_gen_platform_created
     ON generations(platform, created_at DESC);
@@ -140,9 +171,41 @@ def _migrate() -> None:
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_gen_cache_key ON generations(cache_key)"
         )
+        _backfill_copies_to_feedback(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+def _backfill_copies_to_feedback(conn) -> None:
+    """One-time migration of legacy `copies` (approvals) into feedback_events.
+
+    Marker-guarded via schema_meta so it runs once; the marker is written only on
+    completion, so an interrupted backfill re-runs. When a copy's generation_id
+    doesn't resolve to a live generation (true of existing rows), both
+    generation_id and original_content are stored NULL — the FK stays honest.
+    """
+    done = conn.execute(
+        "SELECT value FROM schema_meta WHERE key = 'copies_backfilled'"
+    ).fetchone()
+    if done:
+        return
+    conn.execute(
+        """
+        INSERT INTO feedback_events
+            (generation_id, platform, verdict, flag_category, flag_family,
+             original_content, final_content, created_at)
+        SELECT
+            g.id, c.platform, 'approve', NULL, NULL,
+            g.generated_content, c.final_content, c.copied_at
+        FROM copies c
+        LEFT JOIN generations g ON g.id = c.generation_id
+        """
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('copies_backfilled', ?)",
+        (str(time.time()),),
+    )
 
 
 def log_generation(*, platform: str, original_input: str, generated_content: str,
@@ -173,6 +236,94 @@ def log_generation(*, platform: str, original_input: str, generated_content: str
              model, prompt_version, voice_version, cache_key),
         )
         return cur.lastrowid
+
+
+def get_generation(generation_id: int) -> Optional[Dict]:
+    """Fetch a generation row by id, or None."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM generations WHERE id = ?", (generation_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def is_genuine_content(text: Optional[str]) -> bool:
+    """False for content that must never enter voice training: empty/whitespace,
+    error strings, or the 'Generating...' placeholder.
+
+    Sentinel-level only — this does NOT catch model refusals or truncated stubs
+    (a broader minimum-substance heuristic is a later hardening step).
+    """
+    if not text or not text.strip():
+        return False
+    t = text.strip()
+    if t.startswith("Error:"):
+        return False
+    if t.lower() == "generating...":
+        return False
+    return True
+
+
+def _normalize_content(text: Optional[str]) -> str:
+    """Normalize trailing whitespace / line-endings so a newline-only artifact
+    isn't misread as a human edit."""
+    if text is None:
+        return ""
+    lines = text.replace("\r\n", "\n").split("\n")
+    return "\n".join(line.rstrip() for line in lines).strip()
+
+
+def classify_verdict(original: Optional[str], final: str) -> str:
+    """approve when `final` matches the generation (normalized), else edit.
+    approve when there is no original to compare against."""
+    if original is None:
+        return "approve"
+    return "approve" if _normalize_content(original) == _normalize_content(final) else "edit"
+
+
+def log_feedback(*, generation_id: Optional[int], platform: str, verdict: str,
+                 original_content: Optional[str] = None,
+                 final_content: Optional[str] = None,
+                 flag_category: Optional[str] = None) -> int:
+    """Record one human verdict on a generation. Returns the event id.
+
+    approve/edit bump voice_version (they yield content the voice loop learns
+    from); reject does not. A flag_category must be in FLAG_TAXONOMY and its
+    family is derived. Raises ValueError on an unknown verdict/flag, or on
+    non-genuine final_content.
+    """
+    if verdict not in VALID_VERDICTS:
+        raise ValueError(f"unknown verdict: {verdict!r}")
+    flag_family = None
+    if flag_category is not None:
+        if flag_category not in FLAG_TAXONOMY:
+            raise ValueError(f"unknown flag category: {flag_category!r}")
+        flag_family = FLAG_TAXONOMY[flag_category]
+    if final_content is not None and not is_genuine_content(final_content):
+        raise ValueError("final_content is not genuine content")
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO feedback_events
+                (generation_id, platform, verdict, flag_category, flag_family,
+                 original_content, final_content, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (generation_id, platform, verdict, flag_category, flag_family,
+             original_content, final_content, time.time()),
+        )
+        event_id = cur.lastrowid
+        if verdict in ("approve", "edit"):
+            # Bump the voice counter → cached generations for this platform
+            # become stale (their cache_key includes voice_version).
+            conn.execute(
+                """
+                INSERT INTO voice_versions (platform, version) VALUES (?, 1)
+                ON CONFLICT(platform) DO UPDATE SET version = version + 1
+                """,
+                (platform,),
+            )
+        return event_id
 
 
 def log_copy(*, platform: str, final_content: str,

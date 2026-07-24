@@ -213,7 +213,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 })
                 return
 
-        # /api/copies — user copied content (= approval signal)
+        # /api/copies — user copied/approved content (writes a verdict event)
         if self.path == '/api/copies':
             try:
                 length = int(self.headers.get('Content-Length', '0'))
@@ -224,13 +224,31 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 if platform not in VALID_PLATFORMS or not final.strip():
                     self._json(400, {'error': 'platform and final_content required'})
                     return
-                row_id = feedback_db.log_copy(
-                    platform=platform,
-                    final_content=final,
+                # Reject non-genuine content (error strings / placeholder) so it
+                # can never enter voice training.
+                if not feedback_db.is_genuine_content(final):
+                    self._json(400, {'error': 'final_content is not genuine content'})
+                    return
+                # Look up the linked generation to verify it belongs to this
+                # platform and to classify approve vs edit by comparing texts.
+                original = None
+                if gen_id is not None:
+                    gen = feedback_db.get_generation(gen_id)
+                    if gen is None or gen['platform'] != platform:
+                        self._json(400, {'error': 'generation_id does not match platform'})
+                        return
+                    original = gen['generated_content']
+                verdict = feedback_db.classify_verdict(original, final)
+                row_id = feedback_db.log_feedback(
                     generation_id=gen_id,
+                    platform=platform,
+                    verdict=verdict,
+                    original_content=original,
+                    final_content=final,
                 )
-                print(f"[copy] {platform} approved id={row_id} chars={len(final)} voice_v={feedback_db.voice_version(platform)}")
-                self._json(200, {'id': row_id, 'platform': platform})
+                print(f"[feedback] {platform} {verdict} id={row_id} gen={gen_id} "
+                      f"chars={len(final)} voice_v={feedback_db.voice_version(platform)}")
+                self._json(200, {'id': row_id, 'platform': platform, 'verdict': verdict})
 
                 # Trigger voice synthesis if enough samples accumulated (async-ish)
                 api_key = os.getenv('GEMINI_API_KEY')
