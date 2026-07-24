@@ -75,12 +75,24 @@ CREATE TABLE IF NOT EXISTS voice_versions (
     version  INTEGER NOT NULL DEFAULT 0
 );
 
--- voice_profiles: synthesized style description (Phase D).
+-- voice_profiles: legacy single-row-per-platform table (superseded by
+-- voice_profile_versions; retained, no longer read or written).
 CREATE TABLE IF NOT EXISTS voice_profiles (
     platform      TEXT PRIMARY KEY,
     style_text    TEXT NOT NULL,
     based_on      INTEGER NOT NULL DEFAULT 0,
     created_at    REAL NOT NULL
+);
+
+-- voice_profile_versions: append-only synthesized style history. The latest
+-- version per platform is the active one; prior versions stay inspectable.
+CREATE TABLE IF NOT EXISTS voice_profile_versions (
+    platform    TEXT NOT NULL,
+    version     INTEGER NOT NULL,
+    style_text  TEXT NOT NULL,
+    based_on    INTEGER NOT NULL DEFAULT 0,
+    created_at  REAL NOT NULL,
+    PRIMARY KEY (platform, version)
 );
 
 -- schema_meta: key/value markers for one-time migrations and backfills.
@@ -384,24 +396,42 @@ def generation_by_cache_key(cache_key: str) -> Optional[Dict]:
 
 
 def copy_count(platform: str) -> int:
-    """Total copies ever logged for a platform."""
+    """Count of approvals+edits for a platform.
+
+    Named `copy_count` for continuity; drives the voice-synthesis staleness rule
+    and trigger. Reads feedback_events (the canonical stream) — NOT the retired
+    `copies` table — so it keeps growing after writes to `copies` stopped. This
+    repoint is load-bearing: leaving it on `copies` would freeze the counter and
+    silently stall voice synthesis.
+    """
     with _connect() as conn:
         row = conn.execute(
-            "SELECT COUNT(*) FROM copies WHERE platform = ?", (platform,)
+            "SELECT COUNT(*) FROM feedback_events "
+            "WHERE platform = ? AND verdict IN ('approve','edit')",
+            (platform,),
         ).fetchone()
         return row[0] if row else 0
 
 
 def get_voice_profile(platform: str) -> Optional[str]:
-    """Return synthesized style description if it exists and is fresh enough."""
+    """Return the active (latest) synthesized style if it exists and is fresh.
+
+    Re-synthesize (return None) once 3+ new approvals/edits arrived since the
+    active version was built — same staleness rule as before, now sourced from
+    feedback_events via copy_count.
+    """
     with _connect() as conn:
         row = conn.execute(
-            "SELECT style_text, based_on FROM voice_profiles WHERE platform = ?",
+            """
+            SELECT style_text, based_on FROM voice_profile_versions
+            WHERE platform = ?
+            ORDER BY version DESC
+            LIMIT 1
+            """,
             (platform,),
         ).fetchone()
         if not row:
             return None
-        # Re-synthesize when 3+ new copies arrived since last synthesis
         current = copy_count(platform)
         if current - row["based_on"] >= 3:
             return None
@@ -409,29 +439,39 @@ def get_voice_profile(platform: str) -> Optional[str]:
 
 
 def save_voice_profile(platform: str, style_text: str) -> None:
+    """Append a new voice-profile version (never overwrites — prior versions stay
+    inspectable). The latest version becomes the active one."""
     with _connect() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(MAX(version), 0) AS v FROM voice_profile_versions "
+            "WHERE platform = ?",
+            (platform,),
+        ).fetchone()
+        next_version = row["v"] + 1
         conn.execute(
             """
-            INSERT INTO voice_profiles (platform, style_text, based_on, created_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(platform) DO UPDATE SET
-                style_text = excluded.style_text,
-                based_on   = excluded.based_on,
-                created_at = excluded.created_at
+            INSERT INTO voice_profile_versions
+                (platform, version, style_text, based_on, created_at)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (platform, style_text, copy_count(platform), time.time()),
+            (platform, next_version, style_text, copy_count(platform), time.time()),
         )
 
 
 def recent_copies(platform: str, limit: int = 3) -> List[Dict]:
-    """Most recent copies for a platform — drives the learning loop."""
+    """Most recent approved/edited content for a platform — drives the learning loop.
+
+    Reads approve+edit feedback_events (edits included: an edited-then-approved
+    post is the strongest voice signal). `copied_at` aliases the event time so
+    existing callers keep working.
+    """
     with _connect() as conn:
         cur = conn.execute(
             """
-            SELECT id, generation_id, platform, final_content, copied_at
-            FROM copies
-            WHERE platform = ?
-            ORDER BY copied_at DESC
+            SELECT id, generation_id, platform, final_content, created_at AS copied_at
+            FROM feedback_events
+            WHERE platform = ? AND verdict IN ('approve','edit')
+            ORDER BY created_at DESC
             LIMIT ?
             """,
             (platform, limit),
@@ -440,7 +480,7 @@ def recent_copies(platform: str, limit: int = 3) -> List[Dict]:
 
 
 def stats_by_platform() -> List[Dict]:
-    """Light dashboard query: gen count, copy count, avg eval per platform."""
+    """Light dashboard query: gen count, approval count, avg eval per platform."""
     with _connect() as conn:
         cur = conn.execute(
             """
@@ -448,7 +488,9 @@ def stats_by_platform() -> List[Dict]:
                 g.platform AS platform,
                 COUNT(g.id) AS generations,
                 COALESCE(AVG(g.eval_score), 0) AS avg_eval,
-                (SELECT COUNT(*) FROM copies c WHERE c.platform = g.platform) AS copies
+                (SELECT COUNT(*) FROM feedback_events f
+                 WHERE f.platform = g.platform
+                   AND f.verdict IN ('approve','edit')) AS copies
             FROM generations g
             GROUP BY g.platform
             ORDER BY g.platform

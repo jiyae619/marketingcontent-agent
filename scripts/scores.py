@@ -95,7 +95,8 @@ def show_platform_summary():
                AVG(eval_score) as avg,
                MIN(eval_score) as low,
                MAX(eval_score) as high,
-               (SELECT COUNT(*) FROM copies c WHERE c.platform = g.platform) as copies
+               (SELECT COUNT(*) FROM feedback_events f
+                WHERE f.platform = g.platform AND f.verdict IN ('approve','edit')) as copies
         FROM generations g
         GROUP BY platform ORDER BY avg DESC
         """
