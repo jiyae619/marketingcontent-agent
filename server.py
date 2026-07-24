@@ -1,4 +1,5 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+import hashlib
 import json
 import sys
 import urllib.request
@@ -26,6 +27,18 @@ PASSWORD_REQUIRED_MESSAGE = (
     "This is a private preview. Enter the password to generate content — "
     "it keeps the shared Gemini quota from being burned by visitors."
 )
+
+GEMINI_MODEL = 'gemini-2.5-flash'
+
+
+def _prompt_hash(channel_template: str) -> str:
+    """Version fingerprint of a channel prompt template.
+
+    Computed from the raw `## AI Prompt` slice BEFORE voice injection, so it
+    identifies the channel template independent of per-user voice (which is
+    tracked separately by voice_version).
+    """
+    return hashlib.sha256(channel_template.encode('utf-8')).hexdigest()[:12]
 
 class CORSRequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
@@ -253,11 +266,13 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
 
             # Same prompt assembly as /api/gemini so the comparison is apples-to-apples.
             try:
-                system_prompt = self.load_prompt_from_md(platform)
+                channel_template = self.load_prompt_from_md(platform)
             except Exception as e:
                 self._json(500, {'error': f'prompt load failed: {e}'})
                 return
-            system_prompt = self._with_voice_examples(platform, system_prompt)
+            prompt_version = _prompt_hash(channel_template)
+            v_ver = feedback_db.voice_version(platform)
+            system_prompt = self._with_voice_examples(platform, channel_template)
             full_prompt = f"{system_prompt}\n\nUser content to transform:\n{user_message}"
 
             # Fan out in parallel. Each provider returns a result dict
@@ -287,6 +302,9 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                         has_image=has_image,
                         eval_score=eval_result['total'],
                         eval_detail=json.dumps(eval_result['criteria']),
+                        model=r['model'],
+                        prompt_version=prompt_version,
+                        voice_version=v_ver,
                     )
                     r['generation_id'] = gen_id
                     r['eval_score'] = eval_result['total']
@@ -330,13 +348,14 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             print(f"[cache] MISS {platform} key={cache_key[:12]}…  voice_v={v_ver}")
 
             # Build prompt entirely server-side — frontend no longer sends system.
-            system_prompt = self.load_prompt_from_md(platform)
-            system_prompt = self._with_voice_examples(platform, system_prompt)
+            channel_template = self.load_prompt_from_md(platform)
+            prompt_version = _prompt_hash(channel_template)
+            system_prompt = self._with_voice_examples(platform, channel_template)
             full_prompt = f"{system_prompt}\n\nUser content to transform:\n{user_message}"
 
             # Forward request to Gemini API
             try:
-                gemini_url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}'
+                gemini_url = f'https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}'
 
                 # Gemini 2.5 Flash has "thinking" enabled by default and reasoning
                 # tokens count against the output budget — which silently truncates
@@ -377,6 +396,9 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                                     has_image=has_image,
                                     eval_score=score,
                                     eval_detail=json.dumps(eval_result['criteria']),
+                                    model=GEMINI_MODEL,
+                                    prompt_version=prompt_version,
+                                    voice_version=v_ver,
                                 )
                                 feedback_db.cache_set(cache_key, platform, text, score)
                                 result['generation_id'] = gen_id

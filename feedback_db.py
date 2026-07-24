@@ -70,6 +70,12 @@ CREATE TABLE IF NOT EXISTS voice_profiles (
     created_at    REAL NOT NULL
 );
 
+-- schema_meta: key/value markers for one-time migrations and backfills.
+CREATE TABLE IF NOT EXISTS schema_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_gen_platform_created
     ON generations(platform, created_at DESC);
 
@@ -91,27 +97,80 @@ def _connect():
 
 
 def init_db() -> None:
-    """Create tables if they don't exist. Safe to call repeatedly."""
+    """Create tables if they don't exist, then run additive migrations.
+    Safe to call repeatedly."""
     with _connect() as conn:
         conn.executescript(SCHEMA)
+    _migrate()
+
+
+# Columns added to the existing `generations` table after its original shape
+# shipped. CREATE TABLE IF NOT EXISTS cannot add these to a table that already
+# exists, so they are applied idempotently here.
+_GENERATION_COLUMNS = (
+    ("model", "TEXT"),            # which provider/model produced this row
+    ("prompt_version", "TEXT"),  # hash of the channel template (pre voice injection)
+    ("voice_version", "INTEGER"),# voice counter at generation time
+    ("cache_key", "TEXT"),       # dedup key; the row IS the cache entry (see server.py)
+)
+
+
+def _migrate() -> None:
+    """Idempotent additive schema migrations. Safe on every startup.
+
+    Adds new columns to `generations` (ALTER TABLE ADD COLUMN can't live in the
+    CREATE TABLE IF NOT EXISTS schema for an already-created table) and the unique
+    index that makes `cache_key` a lookup key. A busy_timeout serializes concurrent
+    startups, and a duplicate-column error is tolerated in case two processes race.
+    """
+    _ensure_dir()
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        conn.execute("PRAGMA busy_timeout = 30000")
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(generations)")}
+        for col, decl in _GENERATION_COLUMNS:
+            if col not in existing:
+                try:
+                    conn.execute(f"ALTER TABLE generations ADD COLUMN {col} {decl}")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise
+        # NULLs are distinct in a SQLite unique index, so un-cached rows
+        # (every /api/compare row, legacy rows) coexist with NULL cache_key.
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_gen_cache_key ON generations(cache_key)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def log_generation(*, platform: str, original_input: str, generated_content: str,
                    link_url: str = "", has_image: bool = False,
                    eval_score: Optional[float] = None,
-                   eval_detail: str = "") -> int:
-    """Record a generation. Returns the row id (use as generation_id for copies)."""
+                   eval_detail: str = "",
+                   model: Optional[str] = None,
+                   prompt_version: Optional[str] = None,
+                   voice_version: Optional[int] = None,
+                   cache_key: Optional[str] = None) -> int:
+    """Record a generation. Returns the row id (use as generation_id for copies).
+
+    Provenance (model, prompt_version, voice_version) attributes the row; cache_key
+    makes the row double as its own cache entry (see generation_by_cache_key).
+    """
     with _connect() as conn:
         cur = conn.execute(
             """
             INSERT INTO generations
                 (platform, original_input, generated_content,
-                 link_url, has_image, eval_score, eval_detail, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 link_url, has_image, eval_score, eval_detail, created_at,
+                 model, prompt_version, voice_version, cache_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (platform, original_input, generated_content,
              link_url, 1 if has_image else 0,
-             eval_score, eval_detail, time.time()),
+             eval_score, eval_detail, time.time(),
+             model, prompt_version, voice_version, cache_key),
         )
         return cur.lastrowid
 
