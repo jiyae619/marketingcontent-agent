@@ -8,6 +8,8 @@ import { PlatformPreview } from './components/PlatformPreview/PlatformPreview';
 import { StatusMessage, LoadingSpinner } from './components/StatusMessage/StatusMessage';
 import { PasswordGate } from './components/PasswordGate/PasswordGate';
 import { ModelCompare } from './components/ModelCompare/ModelCompare';
+import { JudgeModelSelect } from './components/JudgeModelSelect/JudgeModelSelect';
+import { ReviewPanel } from './components/ReviewPanel/ReviewPanel';
 import './styles/index.css';
 
 const PW_KEY = 'app_password';
@@ -31,6 +33,7 @@ function App() {
   const [selectedPlatforms, setSelectedPlatforms] = useState(['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']);
   const [generatedContent, setGeneratedContent] = useState({});
   const [generationIds, setGenerationIds] = useState({});
+  const [judgeModel, setJudgeModel] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState('linkedin');
   const [statusMessage, setStatusMessage] = useState(null);
@@ -137,6 +140,7 @@ function App() {
               platform,
               link_url: linkUrl.trim(),
               has_image: Boolean(imageDataUrl),
+              judge_model: judgeModel || undefined,
               messages: [{ role: 'user', content: userMessage }],
             }),
           });
@@ -194,39 +198,6 @@ function App() {
     setGeneratedContent({});
     setGenerationIds({});
     setShowTabs(false);
-  };
-
-  const copyToClipboard = async (platform) => {
-    const content = generatedContent[platform];
-    if (!content || content === 'Generating...') {
-      showStatus('error', 'No content to copy');
-      return;
-    }
-
-    // Approval signal fires regardless of clipboard outcome.
-    // The user's intent to copy is the signal; clipboard is just delivery.
-    // Preview users have no password so the server would reject this — skip.
-    if (password) {
-      fetch('/api/copies', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-app-password': password,
-        },
-        body: JSON.stringify({
-          platform,
-          final_content: content,
-          generation_id: generationIds[platform],
-        }),
-      }).catch(() => {});
-    }
-
-    try {
-      await navigator.clipboard.writeText(content);
-      showStatus('success', `✓ ${platform} content copied to clipboard!`);
-    } catch {
-      showStatus('error', 'Failed to copy to clipboard');
-    }
   };
 
   return (
@@ -336,6 +307,7 @@ function App() {
                 '🚀 Generate Content!'
               )}
             </Button>
+            <JudgeModelSelect value={judgeModel} onChange={setJudgeModel} />
           </div>
         </Card>
 
@@ -370,8 +342,17 @@ function App() {
                         [platform]: content,
                       }));
                     }}
-                    onCopy={() => copyToClipboard(platform)}
                   />
+                  {generationIds[platform] && (
+                    <ReviewPanel
+                      platform={platform}
+                      content={generatedContent[platform] || ''}
+                      generationId={generationIds[platform]}
+                      password={password}
+                      judgeModel={judgeModel}
+                      onStatus={showStatus}
+                    />
+                  )}
                   <ModelCompare
                     platform={platform}
                     originalContent={originalContent}
