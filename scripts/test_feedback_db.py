@@ -229,13 +229,19 @@ def test_u5_hands_on_time():
             approve(p, B + 300 + i * 0.4)       # session 1: ~300s
         gen("kakaotalk", B + 40 * 60)
         approve("kakaotalk", B + 40 * 60 + 120)  # session 2 (after gap): 120s
-        gen("whatsapp", B + 3 * 3600)            # incomplete: no approval
+        gen("whatsapp", B + 3 * 3600)            # incomplete: no close
+        # session 3 closed by an EDIT (not approve) — must still count
+        def edit_close(p, t):
+            c.execute("INSERT INTO feedback_events (generation_id, platform, verdict, created_at) VALUES (NULL,?, 'edit', ?)", (p, t))
+        gen("linkedin", B + 6 * 3600)
+        edit_close("linkedin", B + 6 * 3600 + 90)  # 90s, closed by edit
         c.commit()
     r = db.hands_on_time_stats()
-    check("3 sessions, 2 completed", r["sessions"] == 3 and r["completed_sessions"] == 2)
+    check("4 sessions, 3 completed (edit closes a session)",
+          r["sessions"] == 4 and r["completed_sessions"] == 3)
     check("AE5 burst=one session ~300s, gap-split ~120s",
           abs(r["durations_seconds"][0] - 300) < 2 and abs(r["durations_seconds"][1] - 120) < 2)
-    check("median computed", abs(r["median_seconds"] - 210) < 2)
+    check("edit-closed session counted ~90s", abs(r["durations_seconds"][2] - 90) < 2)
 
 
 def main():

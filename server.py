@@ -237,18 +237,27 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 original = None
                 if gen_id is not None:
                     gen = feedback_db.get_generation(gen_id)
-                    if gen is None or gen['platform'] != platform:
+                    if gen is None:
+                        # Dangling id (e.g. a rotated DB) — record the approval
+                        # unlinked rather than dropping the signal.
+                        gen_id = None
+                    elif gen['platform'] != platform:
                         self._json(400, {'error': 'generation_id does not match platform'})
                         return
-                    original = gen['generated_content']
+                    else:
+                        original = gen['generated_content']
                 verdict = feedback_db.classify_verdict(original, final)
-                row_id = feedback_db.log_feedback(
-                    generation_id=gen_id,
-                    platform=platform,
-                    verdict=verdict,
-                    original_content=original,
-                    final_content=final,
-                )
+                try:
+                    row_id = feedback_db.log_feedback(
+                        generation_id=gen_id,
+                        platform=platform,
+                        verdict=verdict,
+                        original_content=original,
+                        final_content=final,
+                    )
+                except ValueError as ve:
+                    self._json(400, {'error': str(ve)})
+                    return
                 print(f"[feedback] {platform} {verdict} id={row_id} gen={gen_id} "
                       f"chars={len(final)} voice_v={feedback_db.voice_version(platform)}")
                 self._json(200, {'id': row_id, 'platform': platform, 'verdict': verdict})

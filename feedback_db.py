@@ -208,6 +208,8 @@ def _backfill_copies_to_feedback(conn) -> None:
     ).fetchone()
     if done:
         return
+    # Mirror is_genuine_content in SQL so legacy error/placeholder strings (the
+    # old copy path had no validation) don't enter voice training via history.
     conn.execute(
         """
         INSERT INTO feedback_events
@@ -218,6 +220,9 @@ def _backfill_copies_to_feedback(conn) -> None:
             g.generated_content, c.final_content, c.copied_at
         FROM copies c
         LEFT JOIN generations g ON g.id = c.generation_id
+        WHERE TRIM(c.final_content) != ''
+          AND c.final_content NOT LIKE 'Error:%'
+          AND LOWER(TRIM(c.final_content)) != 'generating...'
         """
     )
     conn.execute(
@@ -342,31 +347,6 @@ def log_feedback(*, generation_id: Optional[int], platform: str, verdict: str,
                 (platform,),
             )
         return event_id
-
-
-def log_copy(*, platform: str, final_content: str,
-             generation_id: Optional[int] = None) -> int:
-    """Record that the user copied this content (approval signal).
-    Bumps voice_version for the platform, which invalidates the cache.
-    """
-    with _connect() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO copies (generation_id, platform, final_content, copied_at)
-            VALUES (?, ?, ?, ?)
-            """,
-            (generation_id, platform, final_content, time.time()),
-        )
-        copy_id = cur.lastrowid
-        # Bump voice version → all cached generations for this platform are now stale
-        conn.execute(
-            """
-            INSERT INTO voice_versions (platform, version) VALUES (?, 1)
-            ON CONFLICT(platform) DO UPDATE SET version = version + 1
-            """,
-            (platform,),
-        )
-        return copy_id
 
 
 def voice_version(platform: str) -> int:
@@ -506,13 +486,14 @@ def stats_by_platform() -> List[Dict]:
 
 
 def hands_on_time_stats() -> Dict:
-    """Per-session hands-on time: first generation → last approval.
+    """Per-session hands-on time: first generation → session close.
 
-    Buckets generation timestamps and approve-event timestamps (cross-platform,
+    Buckets generation timestamps and closing-verdict timestamps (cross-platform,
     since one brief fans out to several channels) into sessions by an inactivity
-    gap. "Final approval" is the last `approve` verdict in a session. A session
-    with no approval is incomplete and excluded from the median; a session whose
-    last approval precedes its first generation is dropped.
+    gap. A session closes on the last approve OR edit verdict — both mean the user
+    accepted content and finished (edit = accepted-after-editing); reject does not
+    close a session. A session with no close is incomplete and excluded from the
+    median; a session whose close precedes its first generation is dropped.
 
     Returns {sessions, completed_sessions, median_seconds, durations_seconds}.
     """
@@ -520,8 +501,8 @@ def hands_on_time_stats() -> Dict:
         events = [(r[0], "gen") for r in conn.execute(
             "SELECT created_at FROM generations WHERE created_at IS NOT NULL"
         )]
-        events += [(r[0], "approve") for r in conn.execute(
-            "SELECT created_at FROM feedback_events WHERE verdict = 'approve'"
+        events += [(r[0], "close") for r in conn.execute(
+            "SELECT created_at FROM feedback_events WHERE verdict IN ('approve','edit')"
         )]
 
     events.sort(key=lambda e: e[0])
@@ -542,12 +523,12 @@ def hands_on_time_stats() -> Dict:
     durations: List[float] = []
     for s in sessions:
         gen_times = [t for t, kind in s if kind == "gen"]
-        approve_times = [t for t, kind in s if kind == "approve"]
-        if not gen_times or not approve_times:
-            continue  # incomplete: no generation or no approval to bound it
-        dur = max(approve_times) - min(gen_times)
+        close_times = [t for t, kind in s if kind == "close"]
+        if not gen_times or not close_times:
+            continue  # incomplete: no generation, or no approve/edit to close it
+        dur = max(close_times) - min(gen_times)
         if dur < 0:
-            continue  # last approval precedes first generation — drop
+            continue  # close precedes first generation — drop
         durations.append(dur)
 
     return {
