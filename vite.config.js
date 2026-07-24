@@ -12,7 +12,10 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, dirname, '');
-  const apiPort = env.API_PORT || '8081';
+  const apiPort = env.API_PORT;
+  if (!apiPort) {
+    throw new Error('API_PORT not set. Add it to .env (see .env.example).');
+  }
 
   return {
     plugins: [react()],

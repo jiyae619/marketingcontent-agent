@@ -6,7 +6,14 @@ import { PlatformSelector } from './components/PlatformSelector/PlatformSelector
 import { TabNavigation } from './components/TabNavigation/TabNavigation';
 import { PlatformPreview } from './components/PlatformPreview/PlatformPreview';
 import { StatusMessage, LoadingSpinner } from './components/StatusMessage/StatusMessage';
+import { PasswordGate } from './components/PasswordGate/PasswordGate';
+import { ModelCompare } from './components/ModelCompare/ModelCompare';
 import './styles/index.css';
+
+const PW_KEY = 'app_password';
+const PREVIEW_KEY = 'preview_mode';
+const PREVIEW_BLOCK_MESSAGE =
+  'Please enter the password to generate content. This keeps the shared Gemini quota from being used by visitors.';
 
 const PLATFORM_TABS = [
   { id: 'linkedin', label: 'LinkedIn' },
@@ -28,6 +35,32 @@ function App() {
   const [activeTab, setActiveTab] = useState('linkedin');
   const [statusMessage, setStatusMessage] = useState(null);
   const [showTabs, setShowTabs] = useState(false);
+  const [password, setPassword] = useState(() => localStorage.getItem(PW_KEY) || '');
+  const [gateOpen, setGateOpen] = useState(() => {
+    return !localStorage.getItem(PW_KEY) && localStorage.getItem(PREVIEW_KEY) !== 'true';
+  });
+  const [gateError, setGateError] = useState('');
+
+  const unlockWithPassword = (pw) => {
+    localStorage.setItem(PW_KEY, pw);
+    localStorage.removeItem(PREVIEW_KEY);
+    setPassword(pw);
+    setGateOpen(false);
+    setGateError('');
+  };
+
+  const enterPreviewMode = () => {
+    localStorage.setItem(PREVIEW_KEY, 'true');
+    localStorage.removeItem(PW_KEY);
+    setPassword('');
+    setGateOpen(false);
+    setGateError('');
+  };
+
+  const openGate = () => {
+    setGateError('');
+    setGateOpen(true);
+  };
 
   const handleImageUpload = (event) => {
     const file = event.target.files?.[0];
@@ -59,6 +92,18 @@ function App() {
       return;
     }
 
+    if (!password) {
+      const blockedState = {};
+      selectedPlatforms.forEach(p => {
+        blockedState[p] = 'Enter the password to generate content!';
+      });
+      setGeneratedContent(blockedState);
+      setShowTabs(true);
+      showStatus('error', PREVIEW_BLOCK_MESSAGE);
+      openGate();
+      return;
+    }
+
     setIsGenerating(true);
     setShowTabs(true);
 
@@ -84,7 +129,10 @@ function App() {
         try {
           const response = await fetch('/api/gemini', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'x-app-password': password,
+            },
             body: JSON.stringify({
               platform,
               link_url: linkUrl.trim(),
@@ -93,6 +141,10 @@ function App() {
             }),
           });
 
+          if (response.status === 401) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || PREVIEW_BLOCK_MESSAGE);
+          }
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(errorData.error || 'API request failed');
@@ -118,8 +170,17 @@ function App() {
         }
       });
 
-      await Promise.all(promises);
-      showStatus('success', '✓ All platforms generated successfully!');
+      const results = await Promise.all(promises);
+      const authFailure = results.find(r => r.content.startsWith('Error:') && r.content.includes(PREVIEW_BLOCK_MESSAGE));
+      if (authFailure) {
+        localStorage.removeItem(PW_KEY);
+        setPassword('');
+        setGateError('That password did not work. Try again or continue in preview.');
+        openGate();
+        showStatus('error', PREVIEW_BLOCK_MESSAGE);
+      } else {
+        showStatus('success', '✓ All platforms generated successfully!');
+      }
     } catch (error) {
       showStatus('error', `Generation failed: ${error.message}`);
     } finally {
@@ -144,15 +205,21 @@ function App() {
 
     // Approval signal fires regardless of clipboard outcome.
     // The user's intent to copy is the signal; clipboard is just delivery.
-    fetch('/api/copies', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        platform,
-        final_content: content,
-        generation_id: generationIds[platform],
-      }),
-    }).catch(() => {});
+    // Preview users have no password so the server would reject this — skip.
+    if (password) {
+      fetch('/api/copies', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-app-password': password,
+        },
+        body: JSON.stringify({
+          platform,
+          final_content: content,
+          generation_id: generationIds[platform],
+        }),
+      }).catch(() => {});
+    }
 
     try {
       await navigator.clipboard.writeText(content);
@@ -164,6 +231,14 @@ function App() {
 
   return (
     <div>
+      {gateOpen && (
+        <PasswordGate
+          onUnlock={unlockWithPassword}
+          onPreview={enterPreviewMode}
+          error={gateError}
+        />
+      )}
+
       {/* Header */}
       <header>
         <div className="header-background">
@@ -173,6 +248,15 @@ function App() {
         </div>
         <h1 className="app-title">✨ Marketing Channel Agent</h1>
         <p className="app-subtitle">Transform your content for every platform</p>
+        <div className="auth-badge">
+          {password ? (
+            <span className="auth-pill auth-pill--unlocked">🔓 Generation unlocked</span>
+          ) : (
+            <button type="button" className="auth-pill auth-pill--locked" onClick={openGate}>
+              🔒 Preview mode — click to enter password
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="container">
@@ -287,6 +371,18 @@ function App() {
                       }));
                     }}
                     onCopy={() => copyToClipboard(platform)}
+                  />
+                  <ModelCompare
+                    platform={platform}
+                    originalContent={originalContent}
+                    linkUrl={linkUrl}
+                    hasImage={Boolean(imageDataUrl)}
+                    password={password}
+                    onPickWinner={(text, gen_id, providerKey) => {
+                      setGeneratedContent(prev => ({ ...prev, [platform]: text }));
+                      if (gen_id) setGenerationIds(prev => ({ ...prev, [platform]: gen_id }));
+                      showStatus('success', `Using ${providerKey} version for ${platform}`);
+                    }}
                   />
                 </Card>
               </div>

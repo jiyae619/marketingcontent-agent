@@ -14,19 +14,33 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'tes
 
 import feedback_db
 from evaluators import evaluate as run_eval
+import providers
+from concurrent.futures import ThreadPoolExecutor
 
 feedback_db.init_db()
 
 VALID_PLATFORMS = ['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']
 VOICE_EXAMPLES_LIMIT = 3
 
+PASSWORD_REQUIRED_MESSAGE = (
+    "This is a private preview. Enter the password to generate content — "
+    "it keeps the shared Gemini quota from being burned by visitors."
+)
+
 class CORSRequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         # Enable CORS for all origins
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, x-api-key')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, x-api-key, x-app-password')
         super().end_headers()
+
+    def _password_ok(self):
+        expected = os.getenv('APP_PASSWORD')
+        if not expected:
+            return False
+        provided = self.headers.get('x-app-password', '')
+        return provided == expected
     
     def do_OPTIONS(self):
         self.send_response(200)
@@ -177,6 +191,15 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         return prompt
     
     def do_POST(self):
+        # Generation endpoints all require the shared password.
+        if self.path in ('/api/copies', '/api/gemini', '/api/compare'):
+            if not self._password_ok():
+                self._json(401, {
+                    'error': 'password_required',
+                    'message': PASSWORD_REQUIRED_MESSAGE,
+                })
+                return
+
         # /api/copies — user copied content (= approval signal)
         if self.path == '/api/copies':
             try:
@@ -207,6 +230,73 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                     ).start()
             except Exception as e:
                 self._json(500, {'error': str(e)})
+            return
+
+        # /api/compare — fan out the same prompt to every configured provider
+        # and return all results so the UI can render them side-by-side.
+        if self.path == '/api/compare':
+            try:
+                length = int(self.headers.get('Content-Length', '0'))
+                payload = json.loads(self.rfile.read(length).decode('utf-8'))
+            except Exception as e:
+                self._json(400, {'error': f'bad json: {e}'})
+                return
+
+            platform = (payload.get('platform') or '').lower()
+            if platform not in VALID_PLATFORMS:
+                self._json(400, {'error': f'Unknown platform: {platform}'})
+                return
+
+            user_message = (payload.get('messages') or [{}])[0].get('content', '')
+            link_url = payload.get('link_url') or ''
+            has_image = bool(payload.get('has_image'))
+
+            # Same prompt assembly as /api/gemini so the comparison is apples-to-apples.
+            try:
+                system_prompt = self.load_prompt_from_md(platform)
+            except Exception as e:
+                self._json(500, {'error': f'prompt load failed: {e}'})
+                return
+            system_prompt = self._with_voice_examples(platform, system_prompt)
+            full_prompt = f"{system_prompt}\n\nUser content to transform:\n{user_message}"
+
+            # Fan out in parallel. Each provider returns a result dict
+            # (see providers.py); failures are surfaced as ok=False rows.
+            def run(entry):
+                key, model, fn = entry
+                result = fn(full_prompt, model=model)
+                return key, result
+
+            results = {}
+            with ThreadPoolExecutor(max_workers=len(providers.COMPARE_MODELS)) as pool:
+                for key, result in pool.map(run, providers.COMPARE_MODELS):
+                    results[key] = result
+
+            # Log successful generations from each provider so they can be copied
+            # and tracked in feedback_db just like a normal Gemini run.
+            for key, r in results.items():
+                if not r.get('ok'):
+                    continue
+                try:
+                    eval_result = run_eval(platform, r['text'])
+                    gen_id = feedback_db.log_generation(
+                        platform=platform,
+                        original_input=user_message,
+                        generated_content=r['text'],
+                        link_url=link_url,
+                        has_image=has_image,
+                        eval_score=eval_result['total'],
+                        eval_detail=json.dumps(eval_result['criteria']),
+                    )
+                    r['generation_id'] = gen_id
+                    r['eval_score'] = eval_result['total']
+                    print(f"[compare] {platform} {key} model={r['model']} "
+                          f"score={eval_result['total']:.1f} cost=${r['cost_usd']:.4f} "
+                          f"latency={r['latency_ms']}ms id={gen_id}")
+                except Exception as log_err:
+                    print(f"[compare] log failed for {platform}/{key}: {log_err}")
+
+            self._json(200, {'platform': platform, 'results': results})
             return
 
         # Handle /api/gemini endpoint
@@ -317,7 +407,10 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             super().do_POST()
 
 if __name__ == '__main__':
-    PORT = int(os.getenv('API_PORT', '8081'))
+    api_port = os.getenv('API_PORT')
+    if not api_port:
+        sys.exit('API_PORT not set. Add it to .env (see .env.example).')
+    PORT = int(api_port)
     server = ThreadingHTTPServer(('localhost', PORT), CORSRequestHandler)
     print(f'Server running on http://localhost:{PORT}')
     print('Press Ctrl+C to stop')
