@@ -60,6 +60,11 @@ CRITICAL REQUIREMENTS:
 6. **Structure**:
    - Hook line (keyword-rich, ≤125 chars, complete thought)
    - Main message with personality and specifics
+   - **Event information MUST be bullet points, never prose.** Date, time, location,
+     topic, price, speaker — one item per line, each on its own bullet (emoji bullets
+     like 🗓 📍 ⏰ work well here). Never bury logistics inside a sentence.
+   - **No orphaned words.** Never leave a single stranded word alone on a line
+     (Korean or English) — move it up to the previous line or rephrase.
    - Call-to-action (ask a question, prompt a save, or invite a DM)
 
 7. **Hashtags**:
