@@ -163,7 +163,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         except Exception:
             return base_prompt
 
-    def _maybe_synthesize_voice(self, platform: str, api_key: str) -> None:
+    def _maybe_synthesize_voice(self, platform: str) -> None:
         """Triggered after a copy is logged. If enough new copies exist, synthesize."""
         try:
             count = feedback_db.copy_count(platform)
@@ -191,22 +191,17 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 f"Return ONLY the voice profile description, nothing else."
             )
 
-            gemini_url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}'
-            payload = {
-                "contents": [{"parts": [{"text": synthesis_prompt}]}],
-                "generationConfig": {"maxOutputTokens": 200},
-            }
-            req = urllib.request.Request(
-                gemini_url,
-                data=json.dumps(payload).encode(),
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(req) as resp:
-                rd = json.loads(resp.read().decode())
-                if "candidates" in rd and rd["candidates"]:
-                    style = rd["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    feedback_db.save_voice_profile(platform, style)
-                    print(f"[voice] synthesized {platform} ({count} copies → {len(style)} chars)")
+            # Route through providers.call_gemini, which sets thinkingBudget=0.
+            # A raw call with maxOutputTokens=200 and no thinking budget lets
+            # gemini-2.5-flash spend the cap on internal reasoning, returning a
+            # profile truncated mid-sentence ("The marketer employs a direct,").
+            res = providers.call_gemini(synthesis_prompt)
+            if res.get("ok") and res.get("text"):
+                style = res["text"].strip()
+                feedback_db.save_voice_profile(platform, style)
+                print(f"[voice] synthesized {platform} ({count} copies → {len(style)} chars)")
+            else:
+                print(f"[voice] synthesis returned nothing for {platform}: {res.get('error')}")
         except Exception as e:
             print(f"[voice] synthesis failed for {platform}: {e}")
     
@@ -348,7 +343,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                         import threading
                         threading.Thread(
                             target=self._maybe_synthesize_voice,
-                            args=(platform, api_key),
+                            args=(platform,),
                             daemon=True,
                         ).start()
             except Exception as e:
