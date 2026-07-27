@@ -494,9 +494,15 @@ def get_voice_profile(platform: str) -> Optional[str]:
         return row["style_text"]
 
 
-def save_voice_profile(platform: str, style_text: str) -> None:
+def save_voice_profile(platform: str, style_text: str,
+                       based_on: Optional[int] = None) -> None:
     """Append a new voice-profile version (never overwrites — prior versions stay
-    inspectable). The latest version becomes the active one."""
+    inspectable). The latest version becomes the active one.
+
+    `based_on` defaults to the platform's copy count (the learning-loop source).
+    Pass it explicitly when the profile is seeded from something else — e.g. real
+    published posts — so the recorded provenance matches reality.
+    """
     with _connect() as conn:
         row = conn.execute(
             "SELECT COALESCE(MAX(version), 0) AS v FROM voice_profile_versions "
@@ -510,7 +516,8 @@ def save_voice_profile(platform: str, style_text: str) -> None:
                 (platform, version, style_text, based_on, created_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (platform, next_version, style_text, copy_count(platform), time.time()),
+            (platform, next_version, style_text,
+             copy_count(platform) if based_on is None else based_on, time.time()),
         )
 
 
