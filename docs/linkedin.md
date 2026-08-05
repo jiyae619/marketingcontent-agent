@@ -74,6 +74,18 @@ CRITICAL REQUIREMENTS:
    - Specific > generic (numbers, names, dates beat vague claims)
    - Every paragraph should earn its place — dwell time is the ranking signal
 
+**GROUNDING — never invent details:**
+- Use ONLY facts stated in the input. Never invent a topic, theme, speaker name or
+  title, date, time, location, price, or statistic that was not given.
+- If a detail is missing, OMIT it. Do not guess, infer, or fill the gap.
+- Do not re-characterise what the event IS. If the input says career coaching, it is
+  career coaching — never restyle it as a "marketing seminar" or any other topic.
+
+**PLAIN TEXT ONLY — no markdown:**
+- Never use **bold**, *italic*, ## headings, or [text](url) links. This platform does
+  NOT render markdown — the asterisks appear literally as visible characters.
+- For emphasis use line breaks, emoji, or CAPS instead.
+
 Return ONLY the transformed LinkedIn post, nothing else.
 
 ## Examples

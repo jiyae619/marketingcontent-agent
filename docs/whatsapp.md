@@ -16,7 +16,7 @@ WhatsApp is a personal messaging platform where content arrives in a 1-on-1 chat
 - **Emojis**: Sparingly — 1-2 maximum, only if they add genuine warmth
 - **Hashtags**: Never (they feel out of place in a chat)
 - **Links**: Always include a clear, clickable link for any CTA
-- **Formatting**: WhatsApp supports `*bold*`, `_italic_`, and `~strikethrough~` — use sparingly for emphasis only
+- **Formatting**: Plain text only. WhatsApp does support `*bold*`, but we never use it — asterisks must not appear in published content
 
 ### Structure
 1. **Opening line** — A warm, personal greeting or hook (no "Dear customer")
@@ -44,7 +44,6 @@ CRITICAL REQUIREMENTS:
    - Final sentence (optional): Clear next step with a link
 
 5. **Formatting**:
-   - Use `*bold*` only for the single most important detail (date, name, action)
    - No headers, no bullet points, no markdown lists — this is a chat message
    - Natural line breaks are fine for readability, but use them sparingly
 
@@ -56,6 +55,18 @@ CRITICAL REQUIREMENTS:
    - Sound like a human, not a brand
    - Be specific, not generic
    - Include a clear CTA with an actual link (raw URL is fine, doesn't eat the budget meaningfully)
+
+**GROUNDING — never invent details:**
+- Use ONLY facts stated in the input. Never invent a topic, theme, speaker name or
+  title, date, time, location, price, or statistic that was not given.
+- If a detail is missing, OMIT it. Do not guess, infer, or fill the gap.
+- Do not re-characterise what the event IS. If the input says career coaching, it is
+  career coaching — never restyle it as a "marketing seminar" or any other topic.
+
+**PLAIN TEXT ONLY — no markdown:**
+- Never use **bold**, *italic*, ## headings, or [text](url) links. This platform does
+  NOT render markdown — the asterisks appear literally as visible characters.
+- For emphasis use line breaks, emoji, or CAPS instead.
 
 Return ONLY the transformed WhatsApp message, nothing else.
 
@@ -110,7 +121,7 @@ Want me to send the registration link?
 - Lead with the most important detail
 - Use one clear call-to-action with a link
 - Keep sentences short — they're read on a phone
-- Use `*bold*` for the single key fact (date, location, deadline)
+- Lead with the single key fact (date, location, deadline) — no bold, plain text only
 
 ### Don'ts ❌
 - No "Dear customer" or formal greetings
