@@ -38,6 +38,26 @@ def _cost(model: str, in_tok: int, out_tok: int) -> float:
     return (in_tok / 1_000_000) * rates[0] + (out_tok / 1_000_000) * rates[1]
 
 
+def local_only() -> bool:
+    """True when no paid API call may be made, read fresh so it can't be stale."""
+    return os.getenv("LOCAL_ONLY", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _refused(model: str) -> dict:
+    return _empty_result(model, "LOCAL_ONLY=true — refused a paid API call")
+
+
+def _gemini_schema(schema: dict):
+    """Gemini's responseSchema is an OpenAPI subset and rejects `additionalProperties`.
+    Strip it recursively; every other key we emit is valid there."""
+    if isinstance(schema, dict):
+        return {k: _gemini_schema(v) for k, v in schema.items()
+                if k != "additionalProperties"}
+    if isinstance(schema, list):
+        return [_gemini_schema(v) for v in schema]
+    return schema
+
+
 def _empty_result(model: str, error: str) -> dict:
     return {
         "ok": False, "text": None, "model": model,
@@ -57,16 +77,29 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: int = 60):
         return json.loads(r.read().decode("utf-8"))
 
 
-def call_gemini(prompt: str, model: str = "gemini-2.5-flash") -> dict:
+def call_gemini(prompt: str, model: str = "gemini-2.5-flash", system: str = None,
+                json_schema: dict = None) -> dict:
+    # Single choke point for billing: every paid path goes through here.
+    if local_only():
+        return _refused(model)
     key = os.getenv("GEMINI_API_KEY")
     if not key:
         return _empty_result(model, "GEMINI_API_KEY not set")
     t0 = time.time()
     try:
+        # Gemini is the incumbent generator and the only one with a scored history,
+        # so it keeps the flat concatenation it has always had — splitting it into
+        # systemInstruction would change the prompt and invalidate that baseline.
+        if system:
+            prompt = f"{system}\n\n{prompt}"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+        gen_cfg = {"thinkingConfig": {"thinkingBudget": 0}}
+        if json_schema:
+            gen_cfg["responseMimeType"] = "application/json"
+            gen_cfg["responseSchema"] = _gemini_schema(json_schema)
         data = _post_json(url, {
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"thinkingConfig": {"thinkingBudget": 0}},
+            "generationConfig": gen_cfg,
         }, headers={})
         cand = (data.get("candidates") or [{}])[0]
         text = cand.get("content", {}).get("parts", [{}])[0].get("text", "")
@@ -87,18 +120,27 @@ def call_gemini(prompt: str, model: str = "gemini-2.5-flash") -> dict:
         return _empty_result(model, f"Gemini error: {e}")
 
 
-def call_openai(prompt: str, model: str = "gpt-4o-mini") -> dict:
+def call_openai(prompt: str, model: str = "gpt-4o-mini", system: str = None,
+                json_schema: dict = None) -> dict:
+    # Single choke point for billing: every paid path goes through here.
+    if local_only():
+        return _refused(model)
     key = os.getenv("OPENAI_API_KEY")
     if not key:
         return _empty_result(model, "OPENAI_API_KEY not set")
     t0 = time.time()
+    msgs = ([{"role": "system", "content": system}] if system else []) + \
+           [{"role": "user", "content": prompt}]
+    payload = {"model": model, "messages": msgs}
+    if json_schema:
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "verdict", "strict": True, "schema": json_schema},
+        }
     try:
         data = _post_json(
             "https://api.openai.com/v1/chat/completions",
-            {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-            },
+            payload,
             headers={"Authorization": f"Bearer {key}"},
         )
         choice = (data.get("choices") or [{}])[0]
@@ -128,19 +170,43 @@ def call_openai(prompt: str, model: str = "gpt-4o-mini") -> dict:
         return _empty_result(model, f"OpenAI error: {e}")
 
 
-def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001") -> dict:
+# Claude 4.6+ models run adaptive thinking, and max_tokens caps thinking AND visible
+# text together — the same trap that truncated Gemini output before thinkingBudget=0
+# (see the voice-profile fix). 2048 was tight enough to cut mid-post; 8192 leaves room.
+ANTHROPIC_MAX_TOKENS = 8192
+
+
+def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001",
+                   system: str = None, json_schema: dict = None) -> dict:
+    # Single choke point for billing: every paid path goes through here.
+    if local_only():
+        return _refused(model)
     key = os.getenv("ANTHROPIC_API_KEY")
     if not key:
         return _empty_result(model, "ANTHROPIC_API_KEY not set")
     t0 = time.time()
+    # The channel template belongs in `system`, not the user turn. Flattened into one
+    # user message it ends with a "## Examples" section, and Claude read those examples
+    # as the conversation — gen 71 answered "could you resend the actual content?"
+    # instead of writing a post, and scored 36 for a plumbing bug.
+    payload = {
+        "model": model,
+        "max_tokens": ANTHROPIC_MAX_TOKENS,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+    if system:
+        payload["system"] = system
+    if json_schema:
+        # Structured outputs. Supported on Haiku 4.5, Sonnet 5, Opus 5 (and Opus 4.5 /
+        # 4.1). NOT verified against claude-sonnet-4-6 — if that model 400s on
+        # output_config, either move the judge to claude-haiku or drop the schema.
+        payload["output_config"] = {
+            "format": {"type": "json_schema", "schema": json_schema}
+        }
     try:
         data = _post_json(
             "https://api.anthropic.com/v1/messages",
-            {
-                "model": model,
-                "max_tokens": 2048,
-                "messages": [{"role": "user", "content": prompt}],
-            },
+            payload,
             headers={
                 "x-api-key": key,
                 "anthropic-version": "2023-06-01",
@@ -172,7 +238,8 @@ def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001") -> dic
         return _empty_result(model, f"Anthropic error: {e}")
 
 
-def call_local(prompt: str, model: str = None) -> dict:
+def call_local(prompt: str, model: str = None, json_mode: bool = False,
+               system: str = None, json_schema: dict = None) -> dict:
     """Call a locally-run LLM via an OpenAI-compatible endpoint.
 
     Works with Ollama, LM Studio, llama.cpp server, vLLM, etc. — anything that
@@ -191,10 +258,26 @@ def call_local(prompt: str, model: str = None) -> dict:
         return _empty_result("local", "LOCAL_LLM_MODEL not set")
     key = os.getenv("LOCAL_LLM_API_KEY", "not-needed")
     t0 = time.time()
+    msgs = ([{"role": "system", "content": system}] if system else []) + \
+           [{"role": "user", "content": prompt}]
+    payload = {"model": model, "messages": msgs}
+    if json_schema:
+        # Schema beats bare json_object: it constrains the SHAPE, not just the syntax.
+        # A small model can emit perfectly valid JSON with none of the keys we read.
+        payload["response_format"] = {
+            "type": "json_schema",
+            "json_schema": {"name": "verdict", "strict": True, "schema": json_schema},
+        }
+    elif json_mode:
+        # Small local models routinely emit malformed JSON (mismatched braces,
+        # out-of-range values) when merely *asked* for it in the prompt. Constraining
+        # the decoder is what actually guarantees a parseable object — measured:
+        # llama3.2:3b went from unparseable to valid on the first try.
+        payload["response_format"] = {"type": "json_object"}
     try:
         data = _post_json(
             base.rstrip("/") + "/chat/completions",
-            {"model": model, "messages": [{"role": "user", "content": prompt}]},
+            payload,
             headers={"Authorization": f"Bearer {key}"},
             timeout=120,  # local models can be slower than hosted APIs
         )

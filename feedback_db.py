@@ -519,6 +519,17 @@ def save_voice_profile(platform: str, style_text: str,
             (platform, next_version, style_text,
              copy_count(platform) if based_on is None else based_on, time.time()),
         )
+        # A new voice profile changes what generation produces, so cached rows for
+        # this platform are stale. cache_key embeds the voice_versions counter, so
+        # bumping it here is what actually invalidates them — without this, seeding
+        # a profile silently keeps serving content written in the old voice.
+        conn.execute(
+            """
+            INSERT INTO voice_versions (platform, version) VALUES (?, 1)
+            ON CONFLICT(platform) DO UPDATE SET version = version + 1
+            """,
+            (platform,),
+        )
 
 
 def recent_copies(platform: str, limit: int = 3) -> List[Dict]:

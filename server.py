@@ -14,9 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'testing/core'))
 
 import feedback_db
-from evaluators import evaluate as run_eval
+from evaluators import evaluate as run_eval, strip_markdown
 import providers
 import judge
+import generators
 from concurrent.futures import ThreadPoolExecutor
 
 feedback_db.init_db()
@@ -82,6 +83,12 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 self._json(200, {'platform': platform, 'prompt': prompt})
             except Exception as e:
                 self._json(500, {'error': f'Failed to load prompt: {str(e)}'})
+            return
+
+        # Available generator models — the single source its UI dropdown reads.
+        if self.path == '/api/generator/models':
+            self._json(200, {'models': generators.available_models(),
+                             'default': generators.DEFAULT_GENERATOR_KEY})
             return
 
         # Available judge models — the single source the UI dropdown reads.
@@ -205,7 +212,8 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             print(f"[voice] synthesis failed for {platform}: {e}")
     
-    def _maybe_judge(self, platform, content, generation_id, heuristic_score, judge_model=None):
+    def _maybe_judge(self, platform, content, generation_id, heuristic_score,
+                     judge_model=None, source_brief=None, generator_model=None):
         """Tiered cascade step (runs in a background thread, never blocks generation).
 
         Skips when the heuristic already scored the content at/above the trigger
@@ -216,9 +224,23 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         try:
             if heuristic_score is not None and heuristic_score >= JUDGE_TRIGGER_THRESHOLD:
                 return  # heuristic says it's good enough — skip the paid judge tier
-            verdict = judge.judge(content, platform, model=judge_model, generator_model=GEMINI_MODEL)
+            verdict = judge.judge(content, platform, model=judge_model,
+                                  generator_model=generator_model, source_brief=source_brief)
             if not verdict.get('ok'):
                 print(f"[judge] gen {generation_id} not judged: {verdict.get('error')}")
+                return
+            # `ok` only means the API call succeeded — the model can still return
+            # output the parser can't read (small local models do this often).
+            # Persisting that writes an all-NULL row that renders as a real grade.
+            if verdict.get('overall') is None:
+                print(f"[judge] gen {generation_id} discarded: {verdict.get('error') or 'no scores returned'}")
+                return
+            # Abstention: the judge said it could not verify. Not persisting is the
+            # routing — with no machine grade stored, the review UI shows the
+            # generation ungraded and the human decides unaided. Better than a
+            # fabricated number, which is indistinguishable from a real one.
+            if verdict.get('abstained'):
+                print(f"[judge] gen {generation_id} ABSTAINED (confidence=low) — routed to human")
                 return
             feedback_db.log_judge_result(
                 generation_id=generation_id, platform=platform,
@@ -369,21 +391,30 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             model = payload.get('model')  # judge model key (from the dropdown), optional
             generator_model = payload.get('generator_model')
             gen_id = payload.get('generation_id')
-            # If we know the generation, use its recorded model (provenance from the
-            # data spine) to enforce judge != generator automatically.
-            if generator_model is None and gen_id is not None:
+            source_brief = payload.get('source_brief')
+            # If we know the generation, pull both from the data spine: its recorded
+            # model (to enforce judge != generator) and its original_input, which the
+            # grounding criteria are defined against.
+            if gen_id is not None and (generator_model is None or source_brief is None):
                 g = feedback_db.get_generation(gen_id)
                 if g:
-                    generator_model = g.get('model')
+                    if generator_model is None:
+                        generator_model = g.get('model')
+                    if source_brief is None:
+                        source_brief = g.get('original_input')
 
             try:
-                verdict = judge.judge(content, platform,
-                                      model=model, generator_model=generator_model)
+                verdict = judge.judge(content, platform, model=model,
+                                      generator_model=generator_model,
+                                      source_brief=source_brief)
             except ValueError as ve:
                 self._json(400, {'error': str(ve)})
                 return
-            # Persist a successful verdict when it grades a tracked generation.
-            if verdict.get('ok') and gen_id is not None:
+            # Persist only a verdict that parsed into scores AND the judge stood
+            # behind — `ok` alone just means the API call succeeded, and an abstained
+            # verdict is an explicit "send this to a human" (see _maybe_judge).
+            if (verdict.get('ok') and verdict.get('overall') is not None
+                    and not verdict.get('abstained') and gen_id is not None):
                 try:
                     row_id = feedback_db.log_judge_result(
                         generation_id=gen_id, platform=platform,
@@ -429,13 +460,20 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             prompt_version = _prompt_hash(channel_template)
             v_ver = feedback_db.voice_version(platform)
             system_prompt = self._with_voice_examples(platform, channel_template)
-            full_prompt = f"{system_prompt}\n\nUser content to transform:\n{user_message}"
+            # Two parts, not one string — providers.py puts `system` in each API's
+            # native slot. This is the endpoint the model comparison runs through, so
+            # flattening here is what made Claude score 36 on a plumbing bug.
+            user_turn = f"User content to transform:\n{user_message}"
 
             # Fan out in parallel. Each provider returns a result dict
             # (see providers.py); failures are surfaced as ok=False rows.
             def run(entry):
                 key, model, fn = entry
-                result = fn(full_prompt, model=model)
+                result = fn(user_turn, model=model, system=system_prompt)
+                # Same strip as the main path, or the comparison would rank models on
+                # markdown this pipeline now removes anyway.
+                if result.get('ok') and result.get('text'):
+                    result['text'] = strip_markdown(result['text'])
                 return key, result
 
             results = {}
@@ -493,6 +531,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             link_url    = data.get('link_url', '') or ''
             has_image   = bool(data.get('has_image'))
             judge_model = data.get('judge_model')  # optional: chosen in the UI dropdown
+            generator_key = data.get('generator_model')  # optional: which model writes
 
             # Cache check — a prior generation with this exact key IS the cache entry.
             # A hit returns a real generation (content + id), so a copy of cached
@@ -514,37 +553,25 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             channel_template = self.load_prompt_from_md(platform)
             prompt_version = _prompt_hash(channel_template)
             system_prompt = self._with_voice_examples(platform, channel_template)
-            full_prompt = f"{system_prompt}\n\nUser content to transform:\n{user_message}"
+            # Two parts, not one string — providers.py puts `system` in each API's
+            # native slot. Gemini re-concatenates in exactly this order, so its prompt
+            # stays byte-identical and its scored history remains comparable.
+            user_turn = f"User content to transform:\n{user_message}"
 
-            # Forward request to Gemini API
+            # Generate via the swappable registry (generators.py). call_gemini keeps
+            # thinkingBudget=0 — gemini-2.5-flash counts reasoning tokens against the
+            # output budget, which silently truncated mid-length posts mid-sentence.
             try:
-                gemini_url = f'https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={api_key}'
-
-                # Gemini 2.5 Flash has "thinking" enabled by default and reasoning
-                # tokens count against the output budget — which silently truncates
-                # mid-length output (LinkedIn/Instagram saw cuts mid-sentence).
-                # Content generation doesn't need chain-of-thought; disable it.
-                gemini_payload = {
-                    "contents": [{"parts": [{"text": full_prompt}]}],
-                    "generationConfig": {
-                        "thinkingConfig": {"thinkingBudget": 0},
-                    },
-                }
-                
-                req = urllib.request.Request(
-                    gemini_url,
-                    data=json.dumps(gemini_payload).encode('utf-8'),
-                    headers={
-                        'Content-Type': 'application/json'
-                    }
-                )
-                
-                with urllib.request.urlopen(req) as response:
-                    response_data = json.loads(response.read().decode('utf-8'))
-
-                    if 'candidates' in response_data and len(response_data['candidates']) > 0:
-                        text = response_data['candidates'][0]['content']['parts'][0]['text']
-                        result = {'content': [{'text': text}]}
+                gen = generators.generate(user_turn, model_key=generator_key,
+                                          system=system_prompt)
+                gen_model = gen.get('generator_model') or GEMINI_MODEL
+                if gen.get('ok') and gen.get('text'):
+                        # Strip ONCE, here — before eval, persist, cache, judge and the
+                        # UI response, which all read `text` below. One canonical string
+                        # means the heuristic, the judge and the human grade the same
+                        # bytes the user will actually publish.
+                        text = strip_markdown(gen['text'])
+                        result = {'content': [{'text': text}], 'generator_model': gen_model}
 
                         # Eval + persist + cache
                         if platform in VALID_PLATFORMS:
@@ -560,7 +587,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                                         has_image=has_image,
                                         eval_score=score,
                                         eval_detail=json.dumps(eval_result['criteria']),
-                                        model=GEMINI_MODEL,
+                                        model=gen_model,
                                         prompt_version=prompt_version,
                                         voice_version=v_ver,
                                         cache_key=cache_key,
@@ -580,18 +607,19 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                                     import threading
                                     threading.Thread(
                                         target=self._maybe_judge,
-                                        args=(platform, text, gen_id, score, judge_model),
+                                        args=(platform, text, gen_id, score, judge_model,
+                                              user_message, gen_model),
                                         daemon=True,
                                     ).start()
                             except Exception as log_err:
                                 print(f"[gen] log failed for {platform}: {log_err}")
-                    else:
-                        result = {'error': 'No response from Gemini'}
+                else:
+                    result = {'error': gen.get('error') or f'No response from {gen_model}'}
 
-                    self.send_response(200)
-                    self.send_header('Content-Type', 'application/json')
-                    self.end_headers()
-                    self.wfile.write(json.dumps(result).encode())
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(result).encode())
             
             except urllib.error.HTTPError as e:
                 error_data = e.read().decode('utf-8')
