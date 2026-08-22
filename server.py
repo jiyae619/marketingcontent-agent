@@ -32,10 +32,20 @@ PASSWORD_REQUIRED_MESSAGE = (
 
 GEMINI_MODEL = 'gemini-2.5-flash'
 
-# Tiered eval cascade: heuristic (always, free) -> LLM judge (only on flagged
-# content) -> human. After a new generation, the judge runs in the background
-# when the heuristic score is below the trigger threshold AND a non-generator
-# judge model is reachable; otherwise it no-ops. Both configurable via env.
+# Tiered eval cascade: heuristic (always, free) -> LLM judge -> human.
+#
+# JUDGE_TRIGGER_THRESHOLD is a COST control, not a quality gate. Measured against the
+# golden set (scripts/tune_threshold.py), the heuristic cannot separate clean from
+# defective content at ANY threshold: 16 of 17 defective samples score above the
+# lowest clean sample, and at the shipped default of 70 it catches 1 of 4 injected
+# hallucinations. Reaching 90% recall is impossible anywhere in 50-100; even 82%
+# requires escalating 76% of everything.
+#
+# That is structural, not a tuning problem — the heuristic never receives the brief,
+# so grounding defects are invisible to it by construction. So the gate is applied
+# only when a judge call actually costs money. On a free local judge, judge
+# everything: the gate can only cause false negatives, and false negatives are the
+# error type that reaches a human unflagged.
 JUDGE_ON_GENERATE = os.getenv('JUDGE_ON_GENERATE', 'true').strip().lower() not in ('0', 'false', 'no', 'off')
 JUDGE_TRIGGER_THRESHOLD = float(os.getenv('JUDGE_TRIGGER_THRESHOLD', '70'))
 
@@ -222,15 +232,23 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         needs a second provider). Persists the verdict to judge_results.
         """
         try:
-            if heuristic_score is not None and heuristic_score >= JUDGE_TRIGGER_THRESHOLD:
-                return  # heuristic says it's good enough — skip the paid judge tier
-
-            # Resolve the judge first so the claim can name it. Pure config lookup, no
+            # Resolve the judge first: the claim needs its name, and whether the gate
+            # applies at all depends on which provider answers. Pure config lookup, no
             # network — judge.judge() re-resolves to the same model deterministically.
             try:
-                _k, _l, judge_model_id, _fn = judge.resolve_judge(judge_model, generator_model)
+                _k, _l, judge_model_id, judge_fn = judge.resolve_judge(judge_model, generator_model)
             except ValueError as ve:
                 print(f"[judge] gen {generation_id} not judged: {ve}")
+                return
+
+            # Gate on cost, not on quality — see JUDGE_TRIGGER_THRESHOLD above. A free
+            # local judge is never skipped: the gate's only possible effect there is a
+            # false negative, and it produced 11 of them on 17 known-bad samples.
+            judge_is_free = judge_fn is providers.call_local
+            if (not judge_is_free and heuristic_score is not None
+                    and heuristic_score >= JUDGE_TRIGGER_THRESHOLD):
+                print(f"[judge] gen {generation_id} skipped: score {heuristic_score:.1f} "
+                      f">= {JUDGE_TRIGGER_THRESHOLD} and {judge_model_id} is a paid judge")
                 return
 
             # CLAIM BEFORE JUDGING. This thread is a daemon: if the process exits mid
