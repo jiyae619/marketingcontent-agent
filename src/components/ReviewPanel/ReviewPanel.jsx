@@ -1,9 +1,34 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Button } from '../Button/Button';
 import './ReviewPanel.css';
 
 const FAMILY_LABEL = { grounding: 'ground', voice: 'voice' };
+
+// A local judge takes 17-54s (measured); call_local's own timeout is 120s. The old
+// poller gave up after 8s, so even a successful verdict landed after the UI had
+// stopped listening and only appeared if you clicked "Judge this" by hand.
+const POLL_STEPS_MS = [1000, 2000, 3000];  // then steady
+const POLL_STEADY_MS = 5000;
+const POLL_CEILING_MS = 130000;            // just past the provider timeout
+// No row yet usually means the heuristic cleared it and no judge was dispatched. But
+// all six platforms generate at once, and their claims serialise behind one SQLite
+// writer, so a claim can land later than the grace period. Show "skipped" after the
+// grace, keep polling to the shorter ceiling in case a claim is merely queued.
+const NO_ROW_GRACE_MS = 4000;
+const NO_ROW_CEILING_MS = 25000;
+const TERMINAL = new Set(['graded', 'abstained', 'failed']);
+
+// The judge writes its row on dispatch, so these are real distinguishable outcomes
+// rather than four different ways of showing nothing.
+const STATE_TEXT = {
+  unknown: 'Checking for a judge grade…',
+  pending: 'Judging… local models take 20–60s.',
+  skipped: 'Not judged — the heuristic scored this above the escalation threshold.',
+  abstained: 'Judge abstained — it could not verify this one, so it declined to guess. Your call.',
+  failed: 'Judge failed — no usable verdict came back. Re-run it, or decide unaided.',
+  timeout: 'Judge has not finished yet. It may still be running — re-check in a moment.',
+};
 
 function scoreColor(score) {
   if (score == null) return 'var(--color-text-tertiary)';
@@ -24,27 +49,54 @@ export function ReviewPanel({ platform, content, generationId, password, judgeMo
   const [flags, setFlags] = useState([]);
   const [rejecting, setRejecting] = useState(false);
   const [verdict, setVerdict] = useState(null);
+  const [judgeState, setJudgeState] = useState('unknown');
 
   useEffect(() => {
     fetch('/api/flags').then((r) => r.json()).then((d) => setFlags(d.taxonomy || [])).catch(() => {});
   }, []);
 
-  const fetchGrade = useCallback(() => {
-    if (!generationId) return;
-    fetch(`/api/judge/result?generation_id=${generationId}`)
-      .then((r) => r.json())
-      .then((d) => { if (d && d.overall != null) setGrade(d); })
-      .catch(() => {});
-  }, [generationId]);
-
-  // Reset + poll for a background grade whenever the generation changes.
+  // Poll until the verdict reaches a terminal status, not until a fixed clock runs
+  // out. Backs off so a slow local judge doesn't mean dozens of requests.
   useEffect(() => {
-    setGrade(null); setVerdict(null); setRejecting(false);
+    setGrade(null); setVerdict(null); setRejecting(false); setJudgeState('unknown');
     if (!generationId) return undefined;
-    fetchGrade();
-    const timers = [1500, 4000, 8000].map((ms) => setTimeout(fetchGrade, ms));
-    return () => timers.forEach(clearTimeout);
-  }, [generationId, fetchGrade]);
+
+    let cancelled = false;
+    let timer;
+    let attempt = 0;
+    const startedAt = Date.now();
+
+    const tick = async () => {
+      if (cancelled) return;
+      let d = null;
+      try {
+        const res = await fetch(`/api/judge/result?generation_id=${generationId}`);
+        d = await res.json();
+      } catch { /* a dropped request is not a verdict — keep polling */ }
+      if (cancelled) return;
+
+      // `status` is absent on rows written before the column existed; infer it.
+      const status = d && Object.keys(d).length
+        ? (d.status || (d.overall != null ? 'graded' : 'pending'))
+        : null;
+
+      const elapsed = Date.now() - startedAt;
+      if (status === null) {
+        if (elapsed > NO_ROW_GRACE_MS) setJudgeState('skipped');
+        if (elapsed > NO_ROW_CEILING_MS) return;   // no claim is coming
+      } else {
+        setJudgeState(status);
+        if (status === 'graded') setGrade(d);
+        if (TERMINAL.has(status)) return;
+        if (elapsed > POLL_CEILING_MS) { setJudgeState('timeout'); return; }
+      }
+      timer = setTimeout(tick, POLL_STEPS_MS[attempt] ?? POLL_STEADY_MS);
+      attempt += 1;
+    };
+
+    tick();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [generationId]);
 
   const runJudge = async () => {
     if (!password || !generationId || !content) return;
@@ -56,8 +108,17 @@ export function ReviewPanel({ platform, content, generationId, password, judgeMo
         body: JSON.stringify({ platform, content, generation_id: generationId, model: judgeModel || undefined }),
       });
       const d = await res.json();
-      if (d.ok) setGrade(d);
-      else onStatus?.('error', `Judge unavailable: ${d.error || 'no judge model reachable'}`);
+      // `ok` only means the call succeeded. An abstained verdict still carries an
+      // `overall`, so rendering on `ok` alone would show a grade the judge explicitly
+      // refused to stand behind — the same collapse the status column removed from
+      // the background path.
+      const st = d.status
+        || (d.abstained ? 'abstained' : (d.ok && d.overall != null) ? 'graded' : 'failed');
+      setJudgeState(st);
+      setGrade(st === 'graded' ? d : null);
+      if (st === 'failed') {
+        onStatus?.('error', `Judge unavailable: ${d.error || 'no judge model reachable'}`);
+      }
     } catch {
       onStatus?.('error', 'Judge request failed');
     } finally {
@@ -143,10 +204,14 @@ export function ReviewPanel({ platform, content, generationId, password, judgeMo
             </button>
           </>
         ) : (
-          <div className="rp-nograde">
-            <span className="rp-nograde-text">No judge grade yet — grades appear automatically when the heuristic flags content, or run it now.</span>
-            <Button variant="secondary" size="small" onClick={runJudge} disabled={judging || !generationId}>
-              {judging ? 'Judging…' : '⚖️ Judge this'}
+          <div className={`rp-nograde rp-nograde-${judgeState}`}>
+            <span className="rp-nograde-text">
+              {judgeState === 'pending' && <span className="rp-spin" aria-hidden="true" />}
+              {STATE_TEXT[judgeState] || STATE_TEXT.unknown}
+            </span>
+            <Button variant="secondary" size="small" onClick={runJudge}
+                    disabled={judging || !generationId || judgeState === 'pending'}>
+              {judging ? 'Judging…' : judgeState === 'abstained' ? '↻ Try again' : '⚖️ Judge this'}
             </Button>
           </div>
         )}

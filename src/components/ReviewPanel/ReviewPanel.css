@@ -154,3 +154,21 @@
   .rp-reason { padding-left: 0; }
   .rp-nograde-text { max-width: 100%; }
 }
+
+/* Judge lifecycle states. Each is a distinct outcome now that the verdict row is
+   claimed on dispatch — previously all four rendered as the same blank "no grade". */
+.rp-nograde-pending   .rp-nograde-text { color: var(--color-text-secondary); }
+.rp-nograde-abstained .rp-nograde-text { color: var(--color-warning); }
+.rp-nograde-failed    .rp-nograde-text { color: var(--color-error); }
+.rp-nograde-timeout   .rp-nograde-text { color: var(--color-warning); }
+
+.rp-spin {
+  display: inline-block; width: 10px; height: 10px; margin-right: 7px;
+  vertical-align: -1px; border: 2px solid var(--color-border);
+  border-top-color: var(--color-text-secondary); border-radius: 50%;
+  animation: rp-spin 0.8s linear infinite;
+}
+@keyframes rp-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .rp-spin { animation: none; border-top-color: var(--color-border); }
+}
