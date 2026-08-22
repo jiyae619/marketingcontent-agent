@@ -224,27 +224,52 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         try:
             if heuristic_score is not None and heuristic_score >= JUDGE_TRIGGER_THRESHOLD:
                 return  # heuristic says it's good enough — skip the paid judge tier
+
+            # Resolve the judge first so the claim can name it. Pure config lookup, no
+            # network — judge.judge() re-resolves to the same model deterministically.
+            try:
+                _k, _l, judge_model_id, _fn = judge.resolve_judge(judge_model, generator_model)
+            except ValueError as ve:
+                print(f"[judge] gen {generation_id} not judged: {ve}")
+                return
+
+            # CLAIM BEFORE JUDGING. This thread is a daemon: if the process exits mid
+            # call it is killed with no unwinding, so anything written only on the
+            # success path is lost silently. That is how 45 of 49 eligible generations
+            # went unjudged and left no trace. A pending row survives the crash and is
+            # re-drivable via feedback_db.stuck_judge_results().
+            row_id, prior = feedback_db.claim_judge_result(
+                generation_id=generation_id, platform=platform, judge_model=judge_model_id)
+            if prior in feedback_db.JUDGE_TERMINAL:
+                print(f"[judge] gen {generation_id} already {prior} by {judge_model_id} — skipped")
+                return
+
             verdict = judge.judge(content, platform, model=judge_model,
                                   generator_model=generator_model, source_brief=source_brief)
             if not verdict.get('ok'):
-                print(f"[judge] gen {generation_id} not judged: {verdict.get('error')}")
+                feedback_db.finish_judge_result(row_id, 'failed',
+                                                summary=verdict.get('error'))
+                print(f"[judge] gen {generation_id} FAILED: {verdict.get('error')}")
                 return
             # `ok` only means the API call succeeded — the model can still return
             # output the parser can't read (small local models do this often).
-            # Persisting that writes an all-NULL row that renders as a real grade.
             if verdict.get('overall') is None:
-                print(f"[judge] gen {generation_id} discarded: {verdict.get('error') or 'no scores returned'}")
+                feedback_db.finish_judge_result(
+                    row_id, 'failed',
+                    summary=verdict.get('error') or 'no scores returned')
+                print(f"[judge] gen {generation_id} FAILED: unparseable verdict")
                 return
-            # Abstention: the judge said it could not verify. Not persisting is the
-            # routing — with no machine grade stored, the review UI shows the
-            # generation ungraded and the human decides unaided. Better than a
-            # fabricated number, which is indistinguishable from a real one.
+            # Abstention: the judge said it could not verify. Recorded as its own
+            # status rather than as absence — "I looked and won't guess" is signal,
+            # "the thread died" is an outage, and both used to render identically.
             if verdict.get('abstained'):
-                print(f"[judge] gen {generation_id} ABSTAINED (confidence=low) — routed to human")
+                feedback_db.finish_judge_result(
+                    row_id, 'abstained',
+                    summary=verdict.get('abstain_reason') or 'judge confidence low')
+                print(f"[judge] gen {generation_id} ABSTAINED — routed to human")
                 return
-            feedback_db.log_judge_result(
-                generation_id=generation_id, platform=platform,
-                judge_model=verdict.get('judge_model'),
+            feedback_db.finish_judge_result(
+                row_id, 'graded',
                 overall=verdict.get('overall'),
                 safety_pass=verdict.get('safety_pass'),
                 scores=verdict.get('scores'),
@@ -410,21 +435,28 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             except ValueError as ve:
                 self._json(400, {'error': str(ve)})
                 return
-            # Persist only a verdict that parsed into scores AND the judge stood
-            # behind — `ok` alone just means the API call succeeded, and an abstained
-            # verdict is an explicit "send this to a human" (see _maybe_judge).
-            if (verdict.get('ok') and verdict.get('overall') is not None
-                    and not verdict.get('abstained') and gen_id is not None):
+            # Record the outcome, whatever it was. This endpoint is synchronous so a
+            # claim buys no crash-safety, but writing 'abstained' and 'failed' as
+            # statuses keeps the two distinguishable from "never judged" — the
+            # distinction the background path also depends on.
+            if gen_id is not None and verdict.get('judge_model'):
+                status = ('graded' if verdict.get('ok') and verdict.get('overall') is not None
+                          and not verdict.get('abstained')
+                          else 'abstained' if verdict.get('abstained') else 'failed')
                 try:
-                    row_id = feedback_db.log_judge_result(
+                    row_id, _prior = feedback_db.claim_judge_result(
                         generation_id=gen_id, platform=platform,
-                        judge_model=verdict.get('judge_model'),
-                        overall=verdict.get('overall'),
-                        safety_pass=verdict.get('safety_pass'),
-                        scores=verdict.get('scores'),
-                        summary=verdict.get('summary'),
+                        judge_model=verdict.get('judge_model'))
+                    feedback_db.finish_judge_result(
+                        row_id, status,
+                        overall=verdict.get('overall') if status == 'graded' else None,
+                        safety_pass=verdict.get('safety_pass') if status == 'graded' else None,
+                        scores=verdict.get('scores') if status == 'graded' else None,
+                        summary=(verdict.get('summary') if status == 'graded'
+                                 else verdict.get('abstain_reason') or verdict.get('error')),
                     )
                     verdict['judge_result_id'] = row_id
+                    verdict['status'] = status
                 except Exception as e:
                     print(f"[judge] persist failed: {e}")
             print(f"[judge] {platform} model={verdict.get('judge_model')} "

@@ -118,6 +118,20 @@ else:
         else:
             ok(f"{name} size", f"{model}  {installed[model]:.1f}GB")
 
+# --- owed judge work ---------------------------------------------------------
+# A `pending` row older than one judge run means the thread died mid-call. Before the
+# status column this was invisible: 45 of 49 eligible generations were never judged and
+# nothing recorded it. Surfaced here because preflight is what runs before everything.
+try:
+    import feedback_db  # noqa: E402
+    stuck = feedback_db.stuck_judge_results(older_than_s=300)
+    if stuck:
+        warn("stuck judge rows", f"{len(stuck)} pending >5min — re-drivable")
+    else:
+        ok("stuck judge rows", "none")
+except Exception as e:
+    warn("stuck judge rows", f"unreadable: {e}")
+
 # --- summary -----------------------------------------------------------------
 print()
 if fails:

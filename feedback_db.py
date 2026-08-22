@@ -137,10 +137,26 @@ CREATE TABLE IF NOT EXISTS judge_results (
     safety_pass   INTEGER,        -- 0 / 1 / NULL
     scores        TEXT,           -- JSON: {category: {score, reason}}
     summary       TEXT,           -- overall rationale (main strength/problem/fix)
-    created_at    REAL NOT NULL
+    created_at    REAL NOT NULL,
+    -- Lifecycle. The row is written when the judge is DISPATCHED, not when it
+    -- returns, so owed work exists in the database instead of only in a daemon
+    -- thread. 45 of 49 eligible generations were never judged and left no trace,
+    -- because a dropped thread wrote nothing at all.
+    --   pending   claimed, judge running (or died mid-flight)
+    --   graded    verdict persisted, scores present
+    --   abstained judge declined — routed to a human, NOT a failure
+    --   failed    API error or output the parser could not read
+    status        TEXT NOT NULL DEFAULT 'graded',
+    updated_at    REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_judge_gen ON judge_results(generation_id);
+
+-- One verdict per (generation, judge model): makes completion an UPDATE of the
+-- claimed row rather than an append, so retries and crash-resumes are free.
+-- NULLs are distinct in SQLite, so ad-hoc judges with no generation_id coexist.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_judge_gen_model
+    ON judge_results(generation_id, judge_model);
 
 CREATE INDEX IF NOT EXISTS idx_gen_platform_created
     ON generations(platform, created_at DESC);
@@ -208,13 +224,32 @@ def _migrate() -> None:
         )
         # judge_results columns added after the table first shipped.
         jr_existing = {row[1] for row in conn.execute("PRAGMA table_info(judge_results)")}
-        for col, decl in (("summary", "TEXT"),):
+        for col, decl in (("summary", "TEXT"),
+                          ("status", "TEXT NOT NULL DEFAULT 'graded'"),
+                          ("updated_at", "REAL")):
             if col not in jr_existing:
                 try:
                     conn.execute(f"ALTER TABLE judge_results ADD COLUMN {col} {decl}")
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e).lower():
                         raise
+        # Rows written before `status` existed default to 'graded', which is wrong for
+        # the ones that never produced scores. Reclassify by what they actually hold.
+        if "status" not in jr_existing:
+            conn.execute("UPDATE judge_results SET status = 'failed' WHERE overall IS NULL")
+        # Added with the claim/finish flow. Created here rather than only in SCHEMA
+        # because the table already exists in every live DB. Duplicate (generation_id,
+        # judge_model) pairs would block it — none exist, but fail loudly if they do.
+        try:
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_judge_gen_model "
+                "ON judge_results(generation_id, judge_model)"
+            )
+        except sqlite3.IntegrityError as e:
+            raise RuntimeError(
+                "judge_results has duplicate (generation_id, judge_model) rows; "
+                "de-duplicate before the unique index can be created"
+            ) from e
         _backfill_copies_to_feedback(conn)
         conn.commit()
     finally:
@@ -296,6 +331,93 @@ def get_generation(generation_id: int) -> Optional[Dict]:
         return dict(row) if row else None
 
 
+JUDGE_TERMINAL = ("graded", "abstained")
+
+
+def claim_judge_result(*, generation_id: Optional[int], platform: str,
+                       judge_model: str) -> tuple:
+    """Reserve a judge_results row BEFORE the judge runs. Returns (row_id, prior_status).
+
+    This is the whole point of the status column: work that has been dispatched is
+    recorded, so a judge that dies mid-flight leaves a `pending` row instead of
+    silence. Without it, 45 of 49 eligible generations went unjudged and nothing in
+    the system could tell you.
+
+    prior_status is None for a fresh claim, otherwise the status already on the row.
+    A caller seeing a terminal status should skip — that is what makes a re-run free.
+    """
+    now = time.time()
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO judge_results
+                (generation_id, platform, judge_model, status, created_at, updated_at)
+            VALUES (?, ?, ?, 'pending', ?, ?)
+            ON CONFLICT(generation_id, judge_model) DO NOTHING
+            """,
+            (generation_id, platform, judge_model, now, now),
+        )
+        row = conn.execute(
+            "SELECT id, status, created_at FROM judge_results "
+            "WHERE generation_id IS ? AND judge_model = ?",
+            (generation_id, judge_model),
+        ).fetchone()
+        if row is None:                       # NULL generation_id: no unique match
+            cur = conn.execute(
+                """
+                INSERT INTO judge_results
+                    (generation_id, platform, judge_model, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'pending', ?, ?)
+                """,
+                (generation_id, platform, judge_model, now, now),
+            )
+            return cur.lastrowid, None
+        prior = None if row["created_at"] == now else row["status"]
+        return row["id"], prior
+
+
+def finish_judge_result(row_id: int, status: str, *, overall: Optional[int] = None,
+                        safety_pass: Optional[bool] = None,
+                        scores: Optional[Dict] = None,
+                        summary: Optional[str] = None) -> None:
+    """Complete a claimed row. `status` is one of graded / abstained / failed.
+
+    An UPDATE of an existing row rather than an append, so retrying a judge cannot
+    duplicate the verdict — the old plain INSERT had no unique key and appended.
+    """
+    if status not in ("graded", "abstained", "failed"):
+        raise ValueError(f"invalid judge status: {status}")
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE judge_results
+               SET status = ?, overall = ?, safety_pass = ?, scores = ?,
+                   summary = ?, updated_at = ?
+             WHERE id = ?
+            """,
+            (status, overall,
+             None if safety_pass is None else (1 if safety_pass else 0),
+             json.dumps(scores) if scores is not None else None,
+             summary, time.time(), row_id),
+        )
+
+
+def stuck_judge_results(older_than_s: float = 300.0) -> List[Dict]:
+    """Claimed rows that never finished — the recovery queue.
+
+    A `pending` row older than one judge run means the thread died. These are
+    re-drivable; before the status column they were simply lost.
+    """
+    cutoff = time.time() - older_than_s
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(
+            "SELECT id, generation_id, platform, judge_model, created_at "
+            "FROM judge_results WHERE status = 'pending' AND created_at < ? "
+            "ORDER BY created_at",
+            (cutoff,),
+        )]
+
+
 def log_judge_result(*, generation_id: Optional[int], platform: str, judge_model: str,
                      overall: Optional[int] = None, safety_pass: Optional[bool] = None,
                      scores: Optional[Dict] = None, summary: Optional[str] = None) -> int:
@@ -304,29 +426,30 @@ def log_judge_result(*, generation_id: Optional[int], platform: str, judge_model
     Distinct from log_feedback (human verdicts) — this records what the LLM judge
     graded. `scores` is the per-category dict (stored as JSON); `summary` is the
     judge's overall rationale.
+
+    One-shot convenience: claim + finish('graded'). Prefer the pair directly when the
+    judge call sits between them, so a crash leaves a `pending` row rather than
+    nothing. Written as an upsert because (generation_id, judge_model) is now unique —
+    the old plain INSERT would raise on a re-judge instead of replacing the verdict.
     """
-    with _connect() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO judge_results
-                (generation_id, platform, judge_model, overall, safety_pass,
-                 scores, summary, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (generation_id, platform, judge_model, overall,
-             None if safety_pass is None else (1 if safety_pass else 0),
-             json.dumps(scores) if scores is not None else None,
-             summary, time.time()),
-        )
-        return cur.lastrowid
+    row_id, _prior = claim_judge_result(generation_id=generation_id, platform=platform,
+                                        judge_model=judge_model)
+    finish_judge_result(row_id, "graded", overall=overall, safety_pass=safety_pass,
+                        scores=scores, summary=summary)
+    return row_id
 
 
 def get_judge_result(generation_id: int) -> Optional[Dict]:
-    """Latest machine judge verdict for a generation, or None. `scores` parsed from JSON."""
+    """Latest machine judge verdict for a generation, or None. `scores` parsed from JSON.
+
+    Carries `status`, so a caller can tell a real grade from a judge that declined,
+    failed, or is still running. Existing consumers gate on `overall != null`, which
+    stays correct: only a 'graded' row has scores.
+    """
     with _connect() as conn:
         row = conn.execute(
             "SELECT * FROM judge_results WHERE generation_id = ? "
-            "ORDER BY created_at DESC LIMIT 1",
+            "ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 1",
             (generation_id,),
         ).fetchone()
         if not row:
