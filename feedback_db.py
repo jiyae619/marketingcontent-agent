@@ -539,6 +539,20 @@ def log_feedback(*, generation_id: Optional[int], platform: str, verdict: str,
                 """,
                 (platform,),
             )
+        elif verdict == "reject" and generation_id is not None:
+            # Release the cache key. approve/edit invalidate cached content platform-
+            # wide via voice_version above; reject had no equivalent, so a rejected
+            # generation stayed the cache entry for its brief and was handed straight
+            # back the next time you asked for the same thing — the one outcome you
+            # had explicitly refused.
+            #
+            # The row itself stays: the feedback_event references it, and it is the
+            # record of what was rejected. Only its role as the cache entry ends.
+            # NULLs are distinct in the unique index, so the key is free for a
+            # replacement generation to claim.
+            conn.execute(
+                "UPDATE generations SET cache_key = NULL WHERE id = ?", (generation_id,)
+            )
         return event_id
 
 
