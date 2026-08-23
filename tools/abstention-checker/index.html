@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Should Your LLM Judge Have Answered That?</title>
+<style>
+  :root{
+    --bg:#fbfaf8; --fg:#1c1b19; --muted:#6b6862; --rule:#e3e0da; --card:#fff;
+    --accent:#b4441f; --accent-soft:#fdf1ec;
+    --good:#2f6f4e; --good-soft:#eef6f1;
+    --warn:#8a6d1f; --warn-soft:#fbf5e4;
+    --info:#2c5578; --info-soft:#eef3f8;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#141311; --fg:#eceae5; --muted:#98948c; --rule:#2e2c28; --card:#1c1b18;
+      --accent:#e8825c; --accent-soft:#2a1a13;
+      --good:#7bbd97; --good-soft:#16241c;
+      --warn:#d6b45c; --warn-soft:#251f10;
+      --info:#8fb6d8; --info-soft:#141e28;
+    }
+  }
+  *{box-sizing:border-box}
+  html{background:var(--bg)}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:820px;margin:0 auto;padding:56px 24px 100px}
+  @media (max-width:640px){.wrap{padding:32px 16px 70px}}
+
+  header{border-bottom:2px solid var(--fg);padding-bottom:20px;margin-bottom:28px}
+  .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+  h1{font-size:clamp(26px,4.6vw,38px);line-height:1.12;letter-spacing:-.02em;margin:0 0 12px;font-weight:640}
+  .tag{color:var(--muted);font-size:15px;margin:0}
+
+  h2{font-size:19px;margin:36px 0 8px;font-weight:640;letter-spacing:-.01em}
+  label{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 7px;font-weight:500}
+  textarea{width:100%;font-family:var(--mono);font-size:13.5px;line-height:1.65;padding:13px;border:1px solid var(--rule);border-radius:8px;background:var(--card);color:var(--fg);resize:vertical}
+  textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .hint{font-size:13.5px;color:var(--muted);margin:7px 0 0}
+
+  fieldset{border:1px solid var(--rule);border-radius:8px;padding:14px 16px;margin:20px 0;background:var(--card)}
+  legend{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:0 6px}
+  /* .chk is a <label>, so it must undo the uppercase/mono styling above. */
+  .chk{display:flex;align-items:flex-start;gap:9px;margin:9px 0;cursor:pointer;
+       font-family:var(--sans);font-size:15px;font-weight:400;letter-spacing:0;
+       text-transform:none;color:var(--fg);line-height:1.45}
+  .chk input{margin-top:4px;flex-shrink:0;accent-color:var(--accent)}
+  .chk span small{display:block;color:var(--muted);font-size:13px;line-height:1.45}
+
+  button{font-family:var(--sans);font-size:15px;font-weight:600;padding:11px 22px;border-radius:8px;border:1px solid var(--fg);background:var(--fg);color:var(--bg);cursor:pointer;margin-top:18px}
+  button:hover{opacity:.87}
+  button.ghost{background:transparent;color:var(--fg);margin-left:8px}
+
+  .verdict{border-radius:10px;padding:18px 20px;margin:26px 0 18px;border:1px solid var(--rule);background:var(--card)}
+  .verdict.bad{border-color:var(--accent);background:var(--accent-soft)}
+  .verdict.ok{border-color:var(--good);background:var(--good-soft)}
+  .verdict h3{margin:0 0 8px;font-size:19px}
+  .verdict p{margin:8px 0 0;font-size:15px}
+
+  .crit{border:1px solid var(--rule);border-left-width:4px;border-radius:8px;padding:13px 15px;margin:10px 0;background:var(--card)}
+  .crit.relative{border-left-color:var(--accent)}
+  .crit.intrinsic{border-left-color:var(--good)}
+  .crit.vague{border-left-color:var(--warn)}
+  .crit.unobservable{border-left-color:var(--info)}
+  .crit.unknown{border-left-color:var(--muted)}
+  .crit .name{font-weight:640;font-size:15.5px;word-break:break-word}
+  .crit .kind{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;padding:2.5px 7px;border-radius:4px;margin-left:8px;white-space:nowrap;vertical-align:2px}
+  .relative .kind{background:var(--accent-soft);color:var(--accent)}
+  .intrinsic .kind{background:var(--good-soft);color:var(--good)}
+  .vague .kind{background:var(--warn-soft);color:var(--warn)}
+  .unobservable .kind{background:var(--info-soft);color:var(--info)}
+  .unknown .kind{background:var(--rule);color:var(--muted)}
+  .crit .why{font-size:14px;color:var(--muted);margin-top:6px;line-height:1.5}
+  .crit .why b{color:var(--fg)}
+  .flagword{font-family:var(--mono);font-size:.92em;background:var(--rule);padding:1px 4px;border-radius:3px}
+
+  pre{font-family:var(--mono);font-size:12.5px;line-height:1.6;background:var(--card);border:1px solid var(--rule);border-radius:8px;padding:15px;overflow-x:auto;margin:12px 0}
+  code{font-family:var(--mono);font-size:.88em;background:var(--accent-soft);padding:1.5px 5px;border-radius:3px}
+
+  details{border-top:1px solid var(--rule);padding-top:16px;margin-top:34px}
+  summary{cursor:pointer;font-weight:640;font-size:16px}
+  details p{font-size:15px}
+  footer{margin-top:44px;padding-top:20px;border-top:1px solid var(--rule);font-size:13.5px;color:var(--muted)}
+  a{color:var(--accent)}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="kicker">A pre-flight check for LLM-as-judge</p>
+  <h1>Your judge just gave you a score. Should it have?</h1>
+  <p class="tag">Paste your rubric. Find the criteria your judge <em>cannot actually verify</em> — and that it will score anyway, confidently.</p>
+</header>
+
+<h2>1 · Your rubric</h2>
+<label for="rubric">One criterion per line — <code>name: description</code>, or just the name</label>
+<textarea id="rubric" rows="8" spellcheck="false">accuracy: does the answer state facts that are supported by the source document?
+completeness: does it cover everything the question asked for?
+tone: is the writing natural rather than robotic?
+helpfulness: is this a good, useful answer?
+engagement: will the user click through?</textarea>
+<p class="hint">Try it with the example above, then paste your own.</p>
+
+<fieldset>
+  <legend>2 · What you actually give the judge at call time</legend>
+  <label class="chk"><input type="checkbox" id="hasSource"><span>The <b>source material</b> the answer was drawn from<small>Documents, retrieved context, ground-truth data.</small></span></label>
+  <label class="chk"><input type="checkbox" id="hasBrief"><span>The <b>original request or brief</b><small>The question, prompt, or instruction the output was responding to.</small></span></label>
+  <label class="chk"><input type="checkbox" id="hasRef"><span>A <b>reference answer or spec</b><small>A gold answer, checklist, or schema to compare against.</small></span></label>
+</fieldset>
+
+<button id="run">Check the rubric</button>
+<button class="ghost" id="reset">Reset</button>
+
+<div id="out" class="hidden"></div>
+
+<details>
+  <summary>Why this tool exists</summary>
+  <p>A rubric contains two kinds of criteria, and they behave completely differently.</p>
+  <p><b>Intrinsic</b> criteria are judgable from the artifact alone. Is the grammar clean? Is the tone robotic? Is there a slur in it? The text in front of the judge is the whole evidence base.</p>
+  <p><b>Relative</b> criteria are defined <em>against something else</em>. "Accurate" means accurate <em>to a source</em>. "Complete" means complete <em>relative to a request</em>. "On-brief" means on <em>which</em> brief. If that referent isn't in the judge's context, the criterion isn't hard to judge — it's <b>impossible</b> to judge.</p>
+  <p><b>And the judge will score it anyway.</b> That's the part that costs you. In the system this tool was extracted from, a small local model was asked to grade grounding with the source brief set to <code>None</code>. It returned <code>confidence: "medium"</code> and <code>overall: 80</code> — a confident number for a property it had no way to observe. It didn't hedge, and nothing downstream could tell that verdict apart from a real one.</p>
+  <p>The fix isn't a better prompt. Asking the model to notice its own blindness is asking the blind spot to report itself. <b>Whether the referent was supplied is a fact the calling code already knows</b> — so the calling code should enforce abstention, deterministically, before the score is ever trusted. That guard is what this tool writes for you.</p>
+  <p>One more consequence people miss: a contaminated criterion doesn't just invalidate itself. If you average criteria into an overall score, or gate a safety decision on a family of them, <b>one unverifiable criterion silently contaminates the aggregate</b> — which is usually the number someone actually ships on.</p>
+</details>
+
+<footer>
+  Runs entirely in your browser. Nothing is uploaded, no API key, no signup.<br>
+  Extracted from a production content-evaluation harness — the abstention rule it emits is the one that shipped after the incident above.
+</footer>
+
+</div>
+
+<script>
+/* Signal families. Ordered by priority: the first matching family wins the primary
+   classification. Vagueness is reported as a secondary warning, because a criterion
+   can be intrinsic AND vague ("natural tone") and both facts are worth knowing. */
+const FAMILIES = [
+  { kind:'unobservable', referent:null,
+    re:/\b(engagement|click[- ]?through|clickthrough|ctr|conversion|retention|churn|satisfaction|nps|revenue|virality|viral|open rate|bounce rate|will the (user|reader)|users? will|drives? (sales|signups))\b/i,
+    why:'This is an <b>outcome</b>, measurable only after the artifact meets real users. A judge reading the text has no access to it and will substitute a guess dressed as a score.' },
+
+  { kind:'relative', referent:'source material',
+    re:/\b(hallucinat\w*|fabricat\w*|invent(ed|s|ion)?|made[- ]up|unsupported|grounded|grounding|faithful\w*|factual\w*|accurac\w*|accurate|correctness|verifiab\w*|citation|cited|sourced|attribut\w*|truthful\w*)\b/i,
+    why:'Defined against <b>source material</b>. Without the source in context, the judge cannot distinguish a correct claim from a fluent invention.' },
+
+  { kind:'relative', referent:'the original request or brief',
+    re:/\b(relevan\w*|irrelevan\w*|on[- ]brief|off[- ]brief|on[- ]topic|off[- ]topic|addresses|answers the|responsive|instruction[- ]following|follows (the )?instruction\w*|adhere\w*|complian\w*|complies|requirement\w*|as asked|as requested)\b/i,
+    why:'Defined against <b>the request</b>. Without it, "relevant to what?" has no answer and the judge invents its own idea of the task.' },
+
+  { kind:'relative', referent:'a reference answer or spec',
+    re:/\b(complete(ness)?|incomplete|omit\w*|omission\w*|missing|covers|coverage|exhaustive|consistent with|matches|per the|according to|against the|compared to|parity)\b/i,
+    why:'Defined against <b>a reference or spec</b>. "Complete" is meaningless without the list it is complete relative to.' },
+
+  { kind:'intrinsic', referent:null,
+    re:/\b(toxic\w*|profan\w*|slur\w*|harass\w*|hateful|hate speech|explicit|nsfw|self[- ]harm|violent|abusive|threatening|pii|personally identifiable)\b/i,
+    why:'The artifact itself is the evidence. Safe to judge from the text alone.' },
+
+  { kind:'intrinsic', referent:null,
+    re:/\b(grammar|grammatical|spelling|typo\w*|punctuation|fluen\w*|readab\w*|concis\w*|verbos\w*|length|word count|format\w*|structure|valid json|schema|markdown|tone|register|voice|style|slop|cliche|cliché|robotic|repetit\w*|jargon)\b/i,
+    why:'Judgable from the artifact alone. Safe with no referent.' },
+];
+
+const VAGUE = /\b(quality|good|bad|great|nice|helpful|useful|appropriate|professional|effective|compelling|strong|weak|clear enough|natural|human[- ]like|on[- ]brand|engaging|polished|solid)\b/i;
+
+const LABEL = {
+  relative:'relative', intrinsic:'intrinsic',
+  unobservable:'unobservable', unknown:'unclassified'
+};
+
+function classify(line){
+  const [rawName, ...rest] = line.split(':');
+  const name = rawName.trim();
+  const desc = rest.join(':').trim();
+  const hay = name + ' ' + desc;
+  for (const f of FAMILIES){
+    const m = hay.match(f.re);
+    if (m) return { name, desc, kind:f.kind, referent:f.referent, why:f.why, hit:m[0] };
+  }
+  return { name, desc, kind:'unknown', referent:null, hit:null,
+    why:'No familiar signal matched. Decide yourself: can this be judged from the artifact alone, or does it need something else in context? If you cannot name the referent, the criterion is probably too vague to score.' };
+}
+
+const REFKEY = {
+  'source material':'hasSource',
+  'the original request or brief':'hasBrief',
+  'a reference answer or spec':'hasRef',
+};
+
+function esc(s){ return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function slug(s){ return (s.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') || 'criterion'); }
+
+function run(){
+  const lines = document.getElementById('rubric').value
+    .split('\n').map(s => s.trim()).filter(Boolean);
+  const out = document.getElementById('out');
+  if (!lines.length){ out.className='hidden'; return; }
+
+  const supplied = {
+    hasSource: document.getElementById('hasSource').checked,
+    hasBrief:  document.getElementById('hasBrief').checked,
+    hasRef:    document.getElementById('hasRef').checked,
+  };
+
+  const crits = lines.map(classify);
+  const broken = crits.filter(c => c.kind==='relative' && !supplied[REFKEY[c.referent]]);
+  const unobs  = crits.filter(c => c.kind==='unobservable');
+  const vagues = crits.filter(c => VAGUE.test(c.name + ' ' + c.desc));
+  const blocking = broken.length + unobs.length;
+
+  let h = '';
+
+  h += blocking
+    ? `<div class="verdict bad"><h3>Abstain. ${blocking} of ${crits.length} criteria cannot be verified with what you supply.</h3>
+       <p>Any per-criterion score for these is invented. And because they feed the aggregate,
+       <b>your overall score is contaminated too</b> — it is not merely "a bit off", it contains
+       a number with no evidence behind it.</p></div>`
+    : `<div class="verdict ok"><h3>No structural blockers. Every criterion has what it needs.</h3>
+       <p>This does not mean the scores will be <em>good</em> — only that the judge can actually
+       observe what you are asking about. Wording problems, if any, are flagged below.</p></div>`;
+
+  h += '<h2>Criteria</h2>';
+  for (const c of crits){
+    const missing = c.kind==='relative' && !supplied[REFKEY[c.referent]];
+    const isVague = VAGUE.test(c.name + ' ' + c.desc);
+    h += `<div class="crit ${c.kind}">
+      <span class="name">${esc(c.name)}</span><span class="kind">${LABEL[c.kind]}</span>
+      <div class="why">${c.why}`;
+    // Only show the trigger word when it adds information — if it just repeats
+    // the criterion name, the chip is noise.
+    if (c.hit && !c.name.toLowerCase().includes(c.hit.toLowerCase())){
+      h += ` <span class="flagword">matched: ${esc(c.hit)}</span>`;
+    }
+    if (c.kind==='relative'){
+      h += missing
+        ? `<br><b>✗ Referent missing — you are not supplying ${esc(c.referent)}. This criterion must abstain.</b>`
+        : `<br>✓ Referent supplied (${esc(c.referent)}).`;
+    }
+    if (isVague && c.kind!=='unobservable'){
+      h += `<br><b>Also vague:</b> two careful judges will read this differently. Replace the
+            evaluative word with the observable behaviour you actually mean.`;
+    }
+    h += '</div></div>';
+  }
+
+  // Emitted guard — the actual deliverable.
+  const guardRows = [];
+  for (const c of crits.filter(c => c.kind==='relative')){
+    guardRows.push(`    "${slug(c.name)}": "${
+      c.referent==='source material' ? 'source_material'
+      : c.referent==='the original request or brief' ? 'brief'
+      : 'reference'}",`);
+  }
+  const unobsList = unobs.map(c => `"${slug(c.name)}"`).join(', ');
+
+  h += '<h2>Paste this into your judge</h2>';
+  h += `<p class="hint">Enforced in code, before the model is called — not requested in the prompt.
+        A judge cannot reliably report a blind spot it has by definition.</p>`;
+  const L = [];
+  L.push('# Criterion -> the referent it is defined against. Whether that referent was');
+  L.push('# actually supplied is a fact THIS code knows, so this code decides. Asking the');
+  L.push('# model to notice its own blind spot is asking the blind spot to report itself.');
+  L.push('REQUIRES = {');
+  L.push(guardRows.length ? guardRows.join('\n') : '    # (no relative criteria in this rubric)');
+  L.push('}');
+  if (unobsList){
+    L.push('');
+    L.push("# Outcome criteria: no judge can observe these. Measure them, don't grade them.");
+    L.push('UNJUDGEABLE = {' + unobsList + '}');
+  }
+  L.push('');
+  L.push('def check_rubric(**supplied):');
+  L.push('    """check_rubric(source_material=..., brief=..., reference=...)');
+  L.push('    Returns the set of criteria that must abstain. Empty set == safe to score."""');
+  L.push('    return {name for name, referent in REQUIRES.items()');
+  L.push('            if not (supplied.get(referent) or "").strip()}');
+  L.push('');
+  L.push('def apply_abstention(verdict, must_abstain):');
+  L.push('    """Drop unverifiable scores and invalidate any aggregate built from them.');
+  L.push('    Deleting the sub-score but keeping `overall` is the failure this prevents:');
+  L.push('    the contaminated number is usually the one that gets shipped on."""');
+  L.push('    for name in must_abstain:');
+  L.push('        verdict["scores"].pop(name, None)');
+  L.push('    if must_abstain:');
+  L.push('        verdict["abstained"] = True');
+  L.push('        verdict["confidence"] = "low"');
+  L.push('        verdict["overall"] = None');
+  L.push('        verdict["safety_pass"] = None');
+  L.push('        verdict["abstain_reason"] = (');
+  L.push('            "unverifiable without referent: " + ", ".join(sorted(must_abstain)))');
+  L.push('    return verdict');
+  h += '<pre>' + esc(L.join('\n')) + '</pre>';
+
+  if (vagues.length){
+    h += `<h2>Before you ship this rubric</h2><p class="hint">${vagues.length} criterion${vagues.length>1?'a use':' uses'} an
+      evaluative word with no shared definition. These don't block scoring — they just make the
+      scores unstable between models, between runs, and between you and your teammates.</p>`;
+  }
+
+  out.innerHTML = h;
+  out.className = '';
+  out.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+document.getElementById('run').addEventListener('click', run);
+document.getElementById('reset').addEventListener('click', () => {
+  document.getElementById('out').className = 'hidden';
+  ['hasSource','hasBrief','hasRef'].forEach(id => document.getElementById(id).checked = false);
+  window.scrollTo({top:0, behavior:'smooth'});
+});
+</script>
+</body>
+</html>
