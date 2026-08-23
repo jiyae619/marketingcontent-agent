@@ -13,7 +13,7 @@ Instagram is a visual-first platform where authenticity, creativity, and communi
 
 ### Technical Specifications
 - **Length**: 125-150 words (optimal for engagement)
-- **Hashtags**: 5-8 relevant hashtags
+- **Hashtags**: MAXIMUM 5 (Instagram's hard cap) — always including #pknic #피크닉
 - **Emojis**: 3-5 strategically placed emojis
 - **Line breaks**: Use for readability and emphasis
 
@@ -60,6 +60,11 @@ CRITICAL REQUIREMENTS:
 6. **Structure**:
    - Hook line (keyword-rich, ≤125 chars, complete thought)
    - Main message with personality and specifics
+   - **Event information MUST be bullet points, never prose.** Date, time, location,
+     topic, price, speaker — one item per line, each on its own bullet (emoji bullets
+     like 🗓 📍 ⏰ work well here). Never bury logistics inside a sentence.
+   - **No orphaned words.** Never leave a single stranded word alone on a line
+     (Korean or English) — move it up to the previous line or rephrase.
    - Call-to-action (ask a question, prompt a save, or invite a DM)
 
 7. **Hashtags**:
@@ -67,6 +72,18 @@ CRITICAL REQUIREMENTS:
    - ALWAYS include #pknic #피크닉 (counts toward the 5)
    - Use 3 additional specific, relevant tags — no generic stacks like #marketing #business #content
    - Place at the end of caption (or first comment if cleaner)
+
+**GROUNDING — never invent details:**
+- Use ONLY facts stated in the input. Never invent a topic, theme, speaker name or
+  title, date, time, location, price, or statistic that was not given.
+- If a detail is missing, OMIT it. Do not guess, infer, or fill the gap.
+- Do not re-characterise what the event IS. If the input says career coaching, it is
+  career coaching — never restyle it as a "marketing seminar" or any other topic.
+
+**PLAIN TEXT ONLY — no markdown:**
+- Never use **bold**, *italic*, ## headings, or [text](url) links. This platform does
+  NOT render markdown — the asterisks appear literally as visible characters.
+- For emphasis use line breaks, emoji, or CAPS instead.
 
 Return ONLY the transformed Instagram caption, nothing else.
 

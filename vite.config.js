@@ -10,9 +10,16 @@ import { playwright } from '@vitest/browser-playwright';
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, dirname, '');
-  const apiPort = env.API_PORT || '8081';
+  const apiPort = env.API_PORT;
+  // API_PORT only feeds the dev-server proxy below, so only `vite dev` needs it.
+  // Keep failing loud there — a missing port silently breaks every /api call.
+  // A production build has no proxy, and CI has no .env, so requiring it there
+  // fails the build for a value it never reads.
+  if (command === 'serve' && !apiPort) {
+    throw new Error('API_PORT not set. Add it to .env (see .env.example).');
+  }
 
   return {
     plugins: [react()],

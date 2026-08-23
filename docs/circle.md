@@ -55,21 +55,33 @@ CRITICAL REQUIREMENTS:
 3. **Structure** (MANDATORY FORMAT):
    - **Title**: MUST start with `[PKNIC X "event name"]` format (e.g., `[PKNIC X "Book Club"]`)
    - **Introduction**: Short hook paragraph (2–3 sentences) — context + value prop
-   - **Body Sections**: Use `##` headers for main sections (e.g., `## Event Details`, `## What to Expect`)
+   - **Body Sections**: Label each main section with a short plain-text line ending in a colon, on its own line (e.g. `이벤트 상세:`, `Event Details:`, `What to Expect:`). No `#` characters.
    - **Community Engagement**: End with an explicit question or invitation to discuss — posts ending in a direct question generate measurably more replies than declarative posts
 
 4. **Tone**: Informative, community-focused, helpful, and welcoming. This is an async reading environment — readers tolerate depth but reward clarity.
 
 5. **Formatting**:
    - Use bullet points for any list of 3+ items (logistics, takeaways, audience fit)
-   - Use `##` for section headers (REQUIRED)
-   - Bold key facts (date, location, price) for scannability
+   - Section headers are REQUIRED — plain text ending in a colon, on their own line
    - Minimal emojis (1–3 total, used for section markers or emphasis)
 
 6. **Content Quality**:
    - Include specific event details: date, location, speakers, price
    - Explain value and benefits to community members — specifically WHO this is for
    - End with a question or call to RSVP / reply — replies are the goal, not impressions
+
+**GROUNDING — never invent details:**
+- Use ONLY facts stated in the input. Never invent a topic, theme, speaker name or
+  title, date, time, location, price, or statistic that was not given.
+- If a detail is missing, OMIT it. Do not guess, infer, or fill the gap.
+- Do not re-characterise what the event IS. If the input says career coaching, it is
+  career coaching — never restyle it as a "marketing seminar" or any other topic.
+
+**PLAIN TEXT ONLY — no markdown:**
+- Never use **bold**, *italic*, ## headings, or [text](url) links. Asterisks and
+  hash characters must never appear in the published content.
+- Section headers are plain text ending in a colon — see Structure above.
+- For emphasis use line breaks, emoji, or CAPS instead.
 
 Return ONLY the transformed CIRCLE post, nothing else.
 

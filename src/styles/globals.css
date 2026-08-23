@@ -1637,3 +1637,240 @@ textarea.platform-output {
     opacity: 0.7;
   }
 }
+
+/* ---------- Password gate ---------- */
+
+.gate-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 24, 30, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+}
+
+.gate-card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 2rem 2.25rem;
+  width: 100%;
+  max-width: 460px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+}
+
+.gate-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.4rem;
+}
+
+.gate-body {
+  margin: 0 0 1.25rem;
+  color: #475467;
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.gate-input {
+  width: 100%;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.gate-input:focus {
+  border-color: #1a3c34;
+}
+
+.gate-error {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.85rem;
+}
+
+.gate-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+}
+
+.gate-actions .btn {
+  flex: 1;
+  min-width: 140px;
+  justify-content: center;
+  text-align: center;
+}
+
+/* ---------- Auth pill in header ---------- */
+
+.auth-badge {
+  margin-top: 0.6rem;
+}
+
+.auth-pill {
+  display: inline-block;
+  padding: 0.3rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border: none;
+  cursor: default;
+}
+
+.auth-pill--unlocked {
+  background: rgba(16, 122, 87, 0.15);
+  color: #107a57;
+}
+
+.auth-pill--locked {
+  background: rgba(180, 35, 24, 0.12);
+  color: #b42318;
+  cursor: pointer;
+}
+
+.auth-pill--locked:hover {
+  background: rgba(180, 35, 24, 0.2);
+}
+
+/* ---------- Model compare panel ---------- */
+
+.compare-panel {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed #d0d5dd;
+}
+
+.compare-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.compare-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.compare-sub {
+  margin: 0.2rem 0 0;
+  color: #667085;
+  font-size: 0.82rem;
+}
+
+.compare-error {
+  color: #b42318;
+  background: rgba(180, 35, 24, 0.08);
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.9rem;
+}
+
+.compare-card {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #e4e7ec;
+  border-radius: 12px;
+  padding: 0.9rem;
+  gap: 0.6rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.compare-card--winner {
+  border-color: #107a57;
+  box-shadow: 0 0 0 3px rgba(16, 122, 87, 0.12);
+}
+
+.compare-card--error {
+  background: #fdf6f5;
+  border-color: #f3c9c2;
+}
+
+.compare-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.compare-card-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.compare-card-vendor {
+  font-size: 0.75rem;
+  color: #667085;
+}
+
+.compare-winner-pill {
+  background: rgba(16, 122, 87, 0.15);
+  color: #107a57;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.compare-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: #475467;
+}
+
+.compare-metrics span {
+  background: #f4f6f8;
+  padding: 0.15rem 0.5rem;
+  border-radius: 6px;
+}
+
+.compare-text {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  padding: 0.6rem;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  background: #fafbfc;
+}
+
+.compare-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.compare-card-err {
+  margin: 0;
+  color: #b42318;
+  font-size: 0.85rem;
+  background: rgba(180, 35, 24, 0.06);
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+}

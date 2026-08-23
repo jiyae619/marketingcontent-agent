@@ -65,14 +65,141 @@ def count_emojis(content: str) -> int:
     return sum(len(m) for m in EMOJI_RE.findall(content))
 
 
+ORPHAN_MAX_CHARS = 12
+
+# Most of these channels don't render markdown — "**일시:**" publishes with the
+# asterisks visible. Models echo markdown because the prompt itself is written in it,
+# so this has to be caught, not just forbidden. Only linkedin and instagram apply this
+# via format_quality_scorer; circle is excluded on purpose (see RENDERS_MARKDOWN).
+MARKDOWN_LEAK_RE = re.compile(r"\*\*|^#{1,6}\s|\[[^\]]+\]\([^)]+\)", re.M)
+
+def strip_markdown(content: str) -> str:
+    """Delete every markdown artifact from generated content. One rule, all channels.
+
+    Instructions may be written in markdown; published output never is. There are no
+    per-platform exceptions — an exception is what let `##` and `*bold*` back into the
+    prompts and put them in conflict with each other.
+
+    The prompts already forbid markdown, but asking is not enough: on one 6-channel
+    brief gemma3:4b emitted 33 `**` artifacts to Gemini's 5. Removing them is a pure
+    text transform, so code does it rather than a model.
+
+    Deliberately NOT touched:
+      - Single-asterisk bullets — has_bullets() accepts `*` as valid, so rewriting
+        them would fight the format scorer.
+      - Hashtags — `#PKNIC` has no space after the hash, so the heading rule below
+        cannot match it.
+    """
+    if not content:
+        return content
+    # Links first: they contain the brackets and parens the later rules would split.
+    # Keep the URL — the cta scorer looks for a link, and a post needs the address.
+    s = re.sub(
+        r"\[([^\]]+)\]\(([^)]+)\)",
+        lambda m: (m.group(2) if m.group(1).strip() in ("", m.group(2).strip())
+                   else f"{m.group(1)}: {m.group(2)}"),
+        content,
+    )
+    s = s.replace("**", "")                          # bold, paired or orphaned
+    return re.sub(r"^#{1,6}\s+", "", s, flags=re.M)  # ATX headings
+
+
+HANGUL_RE = re.compile(r"[가-힣]")
+
+
+def is_korean(content: str) -> bool:
+    """True when the content is Korean-dominant.
+
+    Every prompt says "write in the SAME language as the input" and then gives TWO
+    length targets — an English one and a Korean one ~2.5x shorter. A single band
+    therefore cannot be right for both; scoring Korean output against the English
+    band is what zeroed `length` on 5 of 6 channels. 10% Hangul is well clear of a
+    Korean post that quotes an English venue name, and of English copy that carries
+    one Korean word.
+    """
+    if not content:
+        return False
+    letters = [c for c in content if c.isalpha()]
+    if not letters:
+        return False
+    return sum(1 for c in letters if HANGUL_RE.match(c)) / len(letters) > 0.10
+
+
+EVENT_INFO_RE = re.compile(
+    r"\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}/\d{1,2}|"
+    r"\d{1,2}(:\d{2})?\s*(AM|PM|am|pm)|\d{1,2}\s*시\b|"
+    r"📅|🗓|📍|⏰|🎟|장소|일시|참가비"
+)
+
+
+def find_orphan_lines(content: str) -> List[str]:
+    """Lines holding a single short stranded word — the widow/orphan problem.
+
+    Only counts a lone word as orphaned when the PREVIOUS line has text: that is a
+    wrapped continuation that got stranded. A lone word after a blank line is a
+    deliberate standalone line, not an orphan. Skips URLs, hashtags, bullets, and
+    emoji-only lines, which are legitimately alone.
+    """
+    lines = content.split("\n")
+    orphans = []
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped or i == 0 or not lines[i - 1].strip():
+            continue
+        tokens = stripped.split()
+        if len(tokens) != 1:
+            continue
+        word = tokens[0]
+        if len(word) > ORPHAN_MAX_CHARS or URL_RE.search(word) or word.startswith("#"):
+            continue
+        if word[0] in "-*·•✅✔▸▶":
+            continue
+        if not EMOJI_RE.sub("", word).strip():      # emoji-only line
+            continue
+        orphans.append(word)
+    return orphans
+
+
+def has_event_info(content: str) -> bool:
+    """Content carries logistics (date / time / location / price)."""
+    return len(EVENT_INFO_RE.findall(content)) >= 2
+
+
+def has_structured_lines(content: str, minimum: int = 2) -> bool:
+    """Content presents items one-per-line with a leading marker.
+
+    Broader than has_bullets() on purpose: an emoji-led line (🗓 7월 12일 / 📍 Impact
+    House) is a bullet in social copy, and it is the style these channels actually
+    use. Judging that as "prose" would penalise the exact formatting the prompt asks
+    for.
+    """
+    count = 0
+    for line in content.split("\n"):
+        s = line.strip()
+        if not s:
+            continue
+        if s[0] in "-*·•✅✔▸▶" or re.match(r"^\d+[.)]", s) or EMOJI_RE.match(s):
+            count += 1
+    return count >= minimum
+
+
 def has_bullets(content: str) -> bool:
     return bool(re.search(r"^[•\-\*]\s|\n[•\-\*]\s", content))
 
 
 def has_headers(content: str) -> bool:
+    """A section header: a `##` line, or a short standalone line ending in a colon.
+
+    The old fallback was `^[A-Z][^.!?]*:$` — ASCII-only, so a Korean header like
+    `이벤트 상세:` never matched and Korean circle posts could satisfy this ONLY by
+    emitting `##`. That forced markdown into the output to score structure. The
+    pattern below is script-agnostic: any line that is a short label ending in a
+    colon, with nothing after it. `날짜: 7월 26일` is a bullet, not a header, and is
+    correctly excluded because content follows the colon.
+    """
     if "##" in content:
         return True
-    return bool(re.search(r"^[A-Z][^.!?]*:$", content, re.MULTILINE))
+    return bool(re.search(r"^[^\s#][^\n.!?]{0,40}:[ \t]*$", content, re.MULTILINE))
 
 
 def has_url(content: str) -> bool:
@@ -184,20 +311,26 @@ class ChannelEvaluator:
 # Reusable scorer factories
 # ---------------------------------------------------------------------------
 
-def char_length_scorer(low_zero, low_ideal, high_ideal, high_zero, weight):
+def char_length_scorer(low_zero, low_ideal, high_ideal, high_zero, weight, ko=None):
+    """Character-count band. `ko` is an optional (zero, ideal, ideal, zero) tuple
+    used when the content is Korean — the prompts give a separate, ~2.5x shorter
+    Korean target, and grading Korean output against the English band zeroed it."""
     def scorer(content: str) -> CriterionResult:
         n = count_chars(content)
-        score = trapezoid_score(n, low_zero, low_ideal, high_ideal, high_zero)
+        lo_z, lo_i, hi_i, hi_z = (ko if (ko and is_korean(content))
+                                  else (low_zero, low_ideal, high_ideal, high_zero))
+        score = trapezoid_score(n, lo_z, lo_i, hi_i, hi_z)
+        lang = "KR" if (ko and is_korean(content)) else "EN"
         return CriterionResult(
             criterion="length",
             score=score,
             weight=weight,
-            message=f"Character count: {n}",
+            message=f"Character count: {n} ({lang} target)",
             actual=str(n),
-            expected=f"{low_ideal}-{high_ideal} chars (acceptable {low_zero}-{high_zero})",
+            expected=f"{lo_i}-{hi_i} chars (acceptable {lo_z}-{hi_z}, {lang})",
             suggestion=(
-                f"Add ~{low_ideal - n} more chars." if n < low_ideal
-                else f"Trim ~{n - high_ideal} chars." if n > high_ideal
+                f"Add ~{lo_i - n} more chars." if n < lo_i
+                else f"Trim ~{n - hi_i} chars." if n > hi_i
                 else "Length is in the sweet spot."
             ),
         )
@@ -243,27 +376,34 @@ def sentence_max_scorer(ideal_max: int, zero_at: int, weight: float):
     return scorer
 
 
-def hard_char_cap_scorer(cap: int, weight: float):
-    """For platforms with a hard limit (X = 280). Above cap = hard 0."""
+def hard_char_cap_scorer(cap: int, weight: float, ideal=None, ko=None):
+    """Hard platform limit (X = 280). Above cap = hard 0.
+
+    `ideal` / `ko` are (low, high) sweet-spot bands. The old version derived the band
+    as "last 80% of cap" (224–280 for X), which inverted the prompt: docs/x.md asks
+    for 100–150 chars and calls 220–275 the concession for logistics-heavy posts. A
+    54-char Korean post scored 24.1 for being exactly what it was told to be.
+    """
     def scorer(content: str) -> CriterionResult:
         n = count_chars(content)
+        band = ko if (ko and is_korean(content)) else (ideal or (int(cap * 0.80), cap))
+        lang = "KR" if (ko and is_korean(content)) else "EN"
+        lo, hi = band
         if n > cap:
             score = 0.0
             msg = f"OVER LIMIT: {n}/{cap} chars"
             sug = f"Cut {n - cap} chars — X enforces this limit."
         else:
-            # Sweet spot in last 80% of cap (e.g. 224-275 for X)
-            sweet_low = int(cap * 0.80)
-            score = trapezoid_score(n, 0, sweet_low, cap, cap + 1)
-            msg = f"Char count: {n}/{cap}"
-            sug = "Tight and punchy." if score >= 70 else f"Aim for {sweet_low}-{cap} for max impact."
+            score = trapezoid_score(n, 0, lo, hi, cap + 1)
+            msg = f"Char count: {n}/{cap} ({lang} target)"
+            sug = "Tight and punchy." if score >= 70 else f"Aim for {lo}-{hi} chars."
         return CriterionResult(
             criterion="char_cap",
             score=score,
             weight=weight,
             message=msg,
             actual=str(n),
-            expected=f"≤{cap} chars (ideal {int(cap*0.8)}-{cap})",
+            expected=f"≤{cap} chars (ideal {lo}-{hi}, {lang})",
             suggestion=sug,
         )
     return scorer
@@ -438,14 +578,77 @@ def punchy_opening_scorer(max_chars: int, weight: float):
 # Platform evaluators
 # ---------------------------------------------------------------------------
 
+def format_quality_scorer(weight: float, min_paragraphs: int = 0):
+    """Formatting checks a model cannot self-verify: orphaned words, and event
+    logistics buried in prose instead of bullets.
+
+    These are deterministic, so they belong in code rather than only in the prompt —
+    an LLM cannot reliably count characters or see its own line breaks.
+    """
+    def scorer(content: str) -> CriterionResult:
+        problems, score = [], 100.0
+
+        orphans = find_orphan_lines(content)
+        if orphans:
+            score -= min(40.0, 15.0 * len(orphans))
+            shown = ", ".join(f'"{w}"' for w in orphans[:3])
+            problems.append(f"{len(orphans)} orphaned word(s): {shown}")
+
+        if has_event_info(content) and not has_structured_lines(content):
+            score -= 35.0
+            problems.append("event info (date/time/location) is in prose, not bullets")
+
+        leaks = MARKDOWN_LEAK_RE.findall(content)
+        if leaks:
+            score -= min(40.0, 20.0 * len(leaks))
+            problems.append(f"{len(leaks)} markdown artifact(s) — renders literally on this platform")
+
+        if min_paragraphs:
+            paras = [p for p in content.split("\n\n") if p.strip()]
+            if len(paras) < min_paragraphs:
+                score -= 25.0
+                problems.append(f"only {len(paras)} paragraphs (want {min_paragraphs}+)")
+
+        score = max(0.0, score)
+        return CriterionResult(
+            criterion="format",
+            score=score,
+            weight=weight,
+            message="Formatting clean" if not problems else "; ".join(problems),
+            actual="clean" if not problems else f"{len(problems)} issue(s)",
+            expected="No orphaned words; event info in bullets"
+                     + (f"; {min_paragraphs}+ paragraphs" if min_paragraphs else ""),
+            suggestion="Good formatting." if not problems else
+                       "Move stranded words up a line; put date/time/location in bullets.",
+        )
+    return scorer
+
+
+# Tone lists carry BOTH languages. They used to be English-only and were scored
+# against Korean output, so `professional`, `casual` and `engagement` returned 0.0 on
+# every Korean post — 20%, 15% and 25% of those channels' weight, permanently lost.
+# One combined list beats language-switching here: the scorer just counts matches, so
+# an English post hits the English terms and a Korean post hits the Korean ones.
 LINKEDIN_PRO_KEYWORDS = [
     "insight", "strategy", "professional", "expertise", "industry",
     "leadership", "innovation", "growth", "development", "success",
     "team", "build", "launch", "share",
+    # Korean equivalents
+    "인사이트", "전략", "전문", "역량", "업계", "리더십", "혁신", "성장",
+    "커리어", "경험", "노하우", "성과", "팀", "함께", "공유",
 ]
 
 INSTAGRAM_CASUAL_KEYWORDS = [
     "you", "your", "we", "our", "love", "excited", "amazing", "join", "check",
+    # Korean equivalents — informal/polite second person and enthusiasm markers
+    "여러분", "우리", "함께", "지금", "만나", "참여", "신청", "확인",
+    "설레", "기대", "좋아", "궁금",
+]
+
+CIRCLE_ENGAGEMENT_KEYWORDS = [
+    "question", "community", "join", "participate", "share", "discuss",
+    # Korean equivalents
+    "질문", "커뮤니티", "참여", "함께", "공유", "이야기", "댓글", "의견", "나누",
 ]
 
 KAKAO_DIRECT_KEYWORDS = [
@@ -461,9 +664,14 @@ WHATSAPP_WARM_KEYWORDS = [
 class LinkedInEvaluator(ChannelEvaluator):
     platform = "linkedin"
     criteria = [
-        Criterion("length", 0.30, char_length_scorer(600, 900, 1100, 1400, 0.30)),
+        # 800–1,000 chars ideal, matching docs/linkedin.md. The prompt previously
+        # asked for 1,300–1,800 while this scorer zeroed out above 1,400 — the agent
+        # was graded against a target it was never told to hit.
+        # EN 800–1,000 / KR 500–650, straight from docs/linkedin.md §2.
+        Criterion("length", 0.30, char_length_scorer(500, 800, 1000, 1300, 0.30,
+                                                     ko=(300, 500, 650, 900))),
         Criterion("hashtags", 0.15, hashtag_count_scorer(3, 5, 0.15, zero_above=10)),
-        Criterion("format", 0.20, paragraph_count_scorer(3, 0.20)),
+        Criterion("format", 0.20, format_quality_scorer(0.20, min_paragraphs=3)),
         Criterion("tone", 0.20, tone_keywords_scorer("professional", LINKEDIN_PRO_KEYWORDS, 2, 5, 0.20)),
         Criterion("cta", 0.15, has_cta_scorer(0.15)),
     ]
@@ -472,22 +680,32 @@ class LinkedInEvaluator(ChannelEvaluator):
 class InstagramEvaluator(ChannelEvaluator):
     platform = "instagram"
     criteria = [
-        Criterion("length", 0.25, word_length_scorer(60, 100, 180, 250, 0.25)),
-        Criterion("hashtags", 0.20, hashtag_count_scorer(3, 7, 0.20, zero_above=15)),
-        Criterion("emojis", 0.15, emoji_count_scorer(1, 3, 0.15)),
-        Criterion("tone", 0.20, tone_keywords_scorer("casual", INSTAGRAM_CASUAL_KEYWORDS, 3, 7, 0.20)),
+        # Weights re-balanced to make room for "format" (orphans + event bullets).
+        # Chars, not words — docs/instagram.md §2 states its targets in characters.
+        # EN 400–600 / KR 200–300.
+        Criterion("length", 0.25, char_length_scorer(200, 400, 600, 900, 0.25,
+                                                     ko=(120, 200, 300, 500))),
+        # §7 is a hard "MAXIMUM 5" (Instagram's own cap), so 6+ must fall off fast.
+        Criterion("hashtags", 0.15, hashtag_count_scorer(3, 5, 0.15, zero_above=7)),
+        Criterion("emojis", 0.10, emoji_count_scorer(1, 3, 0.10)),
+        Criterion("tone", 0.15, tone_keywords_scorer("casual", INSTAGRAM_CASUAL_KEYWORDS, 3, 7, 0.15)),
         Criterion("cta", 0.20, has_cta_scorer(0.20)),
+        Criterion("format", 0.15, format_quality_scorer(0.15)),
     ]
 
 
 class CircleEvaluator(ChannelEvaluator):
     platform = "circle"
     criteria = [
-        Criterion("length", 0.30, word_length_scorer(300, 500, 800, 1100, 0.30)),
+        # Chars, not words — Korean word counts don't convert across languages.
+        # docs/circle.md §2: EN 300–700 words (~1,800–4,200 chars) / KR 200–500 words
+        # equivalent (~800–2,000 chars at the ~4 chars/word measured on real output).
+        Criterion("length", 0.30, char_length_scorer(900, 1800, 4200, 6000, 0.30,
+                                                     ko=(400, 800, 2000, 3200))),
         Criterion("structure", 0.25, _struct := (lambda c: _circle_structure_scorer(c, 0.25))),
         Criterion("format", 0.20, _fmt := (lambda c: _circle_format_scorer(c, 0.20))),
         Criterion("engagement", 0.25, tone_keywords_scorer(
-            "engagement", ["question", "community", "join", "participate", "share", "discuss"], 2, 5, 0.25)),
+            "engagement", CIRCLE_ENGAGEMENT_KEYWORDS, 2, 5, 0.25)),
     ]
 
 
@@ -533,7 +751,10 @@ class WhatsappEvaluator(ChannelEvaluator):
     platform = "whatsapp"
     criteria = [
         Criterion("sentence_count", 0.25, sentence_max_scorer(4, 8, 0.25)),
-        Criterion("length", 0.25, char_length_scorer(80, 200, 400, 600, 0.25)),
+        # EN 50–150 / KR 30–80, from docs/whatsapp.md §2. The old 200–400 band
+        # contradicted its own prompt in both languages.
+        Criterion("length", 0.25, char_length_scorer(30, 50, 150, 300, 0.25,
+                                                     ko=(20, 30, 80, 200))),
         Criterion("hashtags", 0.20, hashtag_count_scorer(0, 0, 0.20)),
         Criterion("emojis", 0.15, emoji_count_scorer(0, 2, 0.15)),
         Criterion("cta", 0.15, has_cta_scorer(0.15)),
@@ -543,7 +764,9 @@ class WhatsappEvaluator(ChannelEvaluator):
 class XEvaluator(ChannelEvaluator):
     platform = "x"
     criteria = [
-        Criterion("char_cap", 0.35, hard_char_cap_scorer(280, 0.35)),
+        # EN 100–150 sweet spot / KR 60–90, from docs/x.md §2. 280 stays a hard cap.
+        Criterion("char_cap", 0.35, hard_char_cap_scorer(280, 0.35,
+                                                         ideal=(100, 150), ko=(60, 90))),
         Criterion("hashtags", 0.20, hashtag_count_scorer(0, 2, 0.20, zero_above=5)),
         Criterion("emojis", 0.15, emoji_count_scorer(0, 2, 0.15)),
         Criterion("single_post", 0.15, no_thread_marker_scorer(0.15)),

@@ -47,3 +47,7 @@ storybook-static
 # Feedback DB (user voice samples — local only)
 testing/results/feedback.db
 testing/results/feedback.db-journal
+testing/results/*.bak
+
+# Golden set (embeds generated content + briefs — rebuildable via scripts/golden_set.py)
+testing/golden/*.json
