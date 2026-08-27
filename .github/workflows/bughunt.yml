@@ -31,8 +31,20 @@ jobs:
     # here: env.preflight only warns (not fails) when it can't reach one, and
     # judge.abstention_contract stubs providers.call_local itself, so no check in
     # this suite needs a live model or any provider API key.
+    #
+    # LOCAL_LLM_MODEL / LOCAL_JUDGE_MODEL must be set to DIFFERENT values, not
+    # left unset. A fresh checkout has no .env (it's gitignored), and without
+    # these both the generator and judge fall back to the same bare "local"
+    # model id — which is exactly the fallback CLAUDE.md rule 3 warns against.
+    # The judge != generator exclusion then removes the only judge candidate,
+    # and preflight fails on a config problem this workflow itself created,
+    # not one in the code under test. Caught by running this workflow for
+    # real on its own PR before trusting it: first run failed on exactly this.
     env:
       LOCAL_ONLY: "true"
+      LOCAL_LLM_MODEL: "gemma3:4b"
+      LOCAL_JUDGE_MODEL: "llama3.2:3b"
+      LOCAL_LLM_BASE_URL: "http://localhost:11434"
     steps:
       - uses: actions/checkout@v4
 
