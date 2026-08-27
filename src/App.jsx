@@ -195,13 +195,6 @@ function App() {
   };
 
 
-  const clearAll = () => {
-    setOriginalContent('');
-    setGeneratedContent({});
-    setGenerationIds({});
-    setShowTabs(false);
-  };
-
   return (
     <div>
       {gateOpen && (
