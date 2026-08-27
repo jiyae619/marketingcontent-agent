@@ -269,6 +269,17 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                                                 summary=verdict.get('error'))
                 print(f"[judge] gen {generation_id} FAILED: {verdict.get('error')}")
                 return
+            # Abstention: the judge said it could not verify. Recorded as its own
+            # status rather than as absence — "I looked and won't guess" is signal,
+            # "the thread died" is an outage, and both used to render identically.
+            # Checked before the unparseable-verdict branch below: an abstained
+            # verdict also has overall=None, and must not be mistaken for that.
+            if verdict.get('abstained'):
+                feedback_db.finish_judge_result(
+                    row_id, 'abstained',
+                    summary=verdict.get('abstain_reason') or 'judge confidence low')
+                print(f"[judge] gen {generation_id} ABSTAINED — routed to human")
+                return
             # `ok` only means the API call succeeded — the model can still return
             # output the parser can't read (small local models do this often).
             if verdict.get('overall') is None:
@@ -276,15 +287,6 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                     row_id, 'failed',
                     summary=verdict.get('error') or 'no scores returned')
                 print(f"[judge] gen {generation_id} FAILED: unparseable verdict")
-                return
-            # Abstention: the judge said it could not verify. Recorded as its own
-            # status rather than as absence — "I looked and won't guess" is signal,
-            # "the thread died" is an outage, and both used to render identically.
-            if verdict.get('abstained'):
-                feedback_db.finish_judge_result(
-                    row_id, 'abstained',
-                    summary=verdict.get('abstain_reason') or 'judge confidence low')
-                print(f"[judge] gen {generation_id} ABSTAINED — routed to human")
                 return
             feedback_db.finish_judge_result(
                 row_id, 'graded',
