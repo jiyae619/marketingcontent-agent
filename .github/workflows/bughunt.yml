@@ -1,0 +1,69 @@
+name: bughunt
+
+# The gap this closes: nothing ever built this repo as a stranger. vite.config.js
+# threw on a missing API_PORT for every command, not just `vite dev`, but that was
+# invisible on any machine with a gitignored .env — so the Netlify deploy stayed red
+# for 19 days with no automated signal anywhere. This runs tools/bughunt/'s
+# deterministic checks (detect only — no agents, no API keys, no spend) on every push
+# to main and every PR into it, so a build break is a red check before merge, not a
+# quiet failure discovered later.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: bughunt-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  bughunt:
+    runs-on: ubuntu-latest
+    # LOCAL_ONLY=true so the checks exercise this repo's real, enforced config —
+    # the same flag CLAUDE.md requires everywhere else — rather than whatever a
+    # bare runner environment would otherwise resolve to. No local Ollama runs
+    # here: env.preflight only warns (not fails) when it can't reach one, and
+    # judge.abstention_contract stubs providers.call_local itself, so no check in
+    # this suite needs a live model or any provider API key.
+    env:
+      LOCAL_ONLY: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: npm ci
+      - run: pip install -r requirements.txt
+
+      # Full suite, not --quick: build.clean_clone is the one that matters most
+      # here, and skipping it would defeat the point of running this in CI at all.
+      # Detect only — no --fix, no --review. Those spawn Claude Code agents and
+      # need API access this workflow deliberately doesn't have; keeping this job
+      # zero-secrets and zero-spend is what makes it something to run on every push
+      # without asking anyone first.
+      - name: run bughunt detectors
+        run: python3 tools/bughunt/bughunt.py
+
+      - name: publish report to job summary
+        if: always()
+        run: cat tools/bughunt/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: upload report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bughunt-report
+          path: tools/bughunt/report.md
