@@ -22,7 +22,6 @@ export function ModelCompare({
   originalContent,
   linkUrl,
   hasImage,
-  password,
   onPickWinner,
 }) {
   const [results, setResults] = useState(null);
@@ -34,16 +33,12 @@ export function ModelCompare({
       setError('Enter content first, then run compare.');
       return;
     }
-    if (!password) {
-      setError('Password required to compare.');
-      return;
-    }
     setLoading(true);
     setError('');
     try {
       const res = await fetch('/api/compare', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-app-password': password },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           platform,
           link_url: linkUrl,
@@ -144,6 +139,5 @@ ModelCompare.propTypes = {
   originalContent: PropTypes.string.isRequired,
   linkUrl: PropTypes.string,
   hasImage: PropTypes.bool,
-  password: PropTypes.string,
   onPickWinner: PropTypes.func,
 };

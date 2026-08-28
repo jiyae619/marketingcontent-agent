@@ -43,7 +43,7 @@ function scoreColor(score) {
  * Grade is fetched from GET /api/judge/result (async, background-graded) with a
  * manual "Judge this" fallback; verdicts POST to /api/copies.
  */
-export function ReviewPanel({ platform, content, generationId, password, judgeModel, onStatus }) {
+export function ReviewPanel({ platform, content, generationId, judgeModel, onStatus }) {
   const [grade, setGrade] = useState(null);
   const [judging, setJudging] = useState(false);
   const [flags, setFlags] = useState([]);
@@ -99,12 +99,12 @@ export function ReviewPanel({ platform, content, generationId, password, judgeMo
   }, [generationId]);
 
   const runJudge = async () => {
-    if (!password || !generationId || !content) return;
+    if (!generationId || !content) return;
     setJudging(true);
     try {
       const res = await fetch('/api/judge', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-app-password': password },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ platform, content, generation_id: generationId, model: judgeModel || undefined }),
       });
       const d = await res.json();
@@ -127,11 +127,10 @@ export function ReviewPanel({ platform, content, generationId, password, judgeMo
   };
 
   const postVerdict = async (body, okMsg) => {
-    if (!password) { onStatus?.('error', 'Enter the password to record a verdict'); return; }
     try {
       const res = await fetch('/api/copies', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-app-password': password },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const d = await res.json();
@@ -246,7 +245,6 @@ ReviewPanel.propTypes = {
   platform: PropTypes.string.isRequired,
   content: PropTypes.string,
   generationId: PropTypes.number,
-  password: PropTypes.string,
   judgeModel: PropTypes.string,
   onStatus: PropTypes.func,
 };

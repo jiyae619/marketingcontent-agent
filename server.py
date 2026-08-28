@@ -25,11 +25,6 @@ feedback_db.init_db()
 VALID_PLATFORMS = ['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']
 VOICE_EXAMPLES_LIMIT = 3
 
-PASSWORD_REQUIRED_MESSAGE = (
-    "This is a private preview. Enter the password to generate content — "
-    "it keeps the shared Gemini quota from being burned by visitors."
-)
-
 GEMINI_MODEL = 'gemini-2.5-flash'
 
 # Tiered eval cascade: heuristic (always, free) -> LLM judge -> human.
@@ -64,16 +59,9 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         # Enable CORS for all origins
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, x-api-key, x-app-password')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, x-api-key')
         super().end_headers()
 
-    def _password_ok(self):
-        expected = os.getenv('APP_PASSWORD')
-        if not expected:
-            return False
-        provided = self.headers.get('x-app-password', '')
-        return provided == expected
-    
     def do_OPTIONS(self):
         self.send_response(200)
         self.end_headers()
@@ -335,15 +323,6 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         return prompt
     
     def do_POST(self):
-        # Generation endpoints all require the shared password.
-        if self.path in ('/api/copies', '/api/gemini', '/api/compare', '/api/judge'):
-            if not self._password_ok():
-                self._json(401, {
-                    'error': 'password_required',
-                    'message': PASSWORD_REQUIRED_MESSAGE,
-                })
-                return
-
         # /api/copies — human verdict on generated content (approve / edit / reject),
         # optionally carrying one flag from the shared taxonomy.
         if self.path == '/api/copies':
