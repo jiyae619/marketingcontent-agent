@@ -250,4 +250,7 @@ def judge(content, platform, *, model=None, generator_model=None, source_brief=N
         verdict["abstained"] = True
         verdict["confidence"] = "low"
         verdict["abstain_reason"] = "no source brief — grounding unverifiable"
+    if verdict["abstained"]:
+        verdict["overall"] = None
+        verdict["safety_pass"] = None
     return verdict
