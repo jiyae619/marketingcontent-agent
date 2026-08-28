@@ -9,6 +9,7 @@ import { StatusMessage, LoadingSpinner } from './components/StatusMessage/Status
 import { ModelCompare } from './components/ModelCompare/ModelCompare';
 import { JudgeModelSelect } from './components/JudgeModelSelect/JudgeModelSelect';
 import { ReviewPanel } from './components/ReviewPanel/ReviewPanel';
+import { GeneratingOverlay } from './components/GeneratingOverlay/GeneratingOverlay';
 import './styles/index.css';
 
 const PLATFORM_TABS = [
@@ -152,6 +153,12 @@ function App() {
           message="This is a static demo of the UI with no backend attached — it drives local AI models and only generates content when you run `python3 server.py` on your own machine."
         />
       )}
+
+      <GeneratingOverlay
+        visible={isGenerating}
+        platforms={selectedPlatforms}
+        contentByPlatform={generatedContent}
+      />
 
       {/* Header */}
       <header>

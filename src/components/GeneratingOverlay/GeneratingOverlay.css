@@ -1,0 +1,187 @@
+/* Non-blocking corner card — never covers the header or blocks interaction
+   with the rest of the page while a batch is generating. */
+.gen-overlay {
+  position: fixed;
+  right: var(--space-lg);
+  bottom: var(--space-lg);
+  z-index: 500;
+  width: 300px;
+  max-width: calc(100vw - 2 * var(--space-lg));
+  background: var(--color-bg-glass);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(26, 60, 52, 0.12);
+  border-radius: var(--border-radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-md) var(--space-md) var(--space-sm);
+  animation: fadeIn var(--transition-base) ease-out;
+  transition: border-color 0.4s ease;
+}
+
+.gen-overlay--done {
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.gen-overlay-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+}
+
+.gen-overlay-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gen-overlay-headline strong {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+}
+
+.gen-overlay-count {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+}
+
+/* ---- the animated orb: two counter-rotating gradient rings, on-brand ---- */
+.gen-orb {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.gen-orb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--color-forest), var(--color-gold), var(--color-forest));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  animation: gen-orb-spin 1.4s linear infinite;
+}
+
+.gen-orb-ring--delay {
+  inset: 6px;
+  animation-duration: 1s;
+  animation-direction: reverse;
+  opacity: 0.65;
+}
+
+.gen-overlay--done .gen-orb-ring {
+  animation-play-state: paused;
+  background: var(--color-success);
+  -webkit-mask: none;
+  mask: none;
+  opacity: 0.15;
+}
+
+.gen-overlay--done .gen-orb-ring--delay {
+  opacity: 0;
+}
+
+@keyframes gen-orb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- per-platform checklist ---- */
+.gen-overlay-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gen-overlay-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 4px 2px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  transition: opacity 0.3s ease;
+}
+
+.gen-overlay-row--done {
+  color: var(--color-text-tertiary);
+}
+
+.gen-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--color-text-tertiary);
+}
+
+.gen-dot--linkedin { background: var(--color-linkedin); }
+.gen-dot--instagram { background: var(--color-instagram); }
+.gen-dot--circle { background: var(--color-circle); }
+.gen-dot--kakaotalk { background: var(--color-kakaotalk); }
+.gen-dot--whatsapp { background: var(--color-whatsapp); }
+.gen-dot--x { background: var(--color-x); }
+
+.gen-overlay-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gen-overlay-icon {
+  width: 16px;
+  text-align: center;
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
+.gen-overlay-row--done .gen-overlay-icon {
+  color: var(--color-success);
+}
+
+.gen-overlay-row--error .gen-overlay-icon {
+  color: var(--color-error);
+  font-weight: 700;
+}
+
+.gen-spinner-sm {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid rgba(26, 60, 52, 0.15);
+  border-radius: 50%;
+  border-top-color: var(--color-accent-primary);
+  animation: spin 0.7s linear infinite;
+}
+
+/* ---- progress bar ---- */
+.gen-overlay-bar {
+  margin-top: var(--space-sm);
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(26, 60, 52, 0.08);
+  overflow: hidden;
+}
+
+.gen-overlay-bar-fill {
+  height: 100%;
+  background: var(--color-accent-gradient);
+  border-radius: 999px;
+  transition: width 0.5s ease;
+}
+
+@media (max-width: 640px) {
+  .gen-overlay {
+    right: var(--space-md);
+    bottom: var(--space-md);
+    left: var(--space-md);
+    width: auto;
+  }
+}
