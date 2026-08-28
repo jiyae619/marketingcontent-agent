@@ -252,19 +252,34 @@ print(json.dumps({"judge_model": v.get("judge_model"),
 
 
 def check_stuck_judge_rows():
-    """A judge_results row stuck at `pending` means the judge thread died mid-call.
+    """A judge_results row stuck at `pending` past a judge call's own ceiling
+    means the thread died mid-call — but `pending` alone is not evidence of
+    that. The row is claimed the moment the judge is DISPATCHED (not on
+    completion), so a real judge call sits at `pending` for as long as it's
+    legitimately in flight: measured 17-54s locally, and call_local's own
+    timeout gives it up to 120s. An earlier version of this detector counted
+    every pending row with no age floor, so running it while a judge call was
+    genuinely mid-flight reported a false "stuck" failure on a row that just
+    hadn't finished yet.
 
-    Visible instead of silent is the whole point of the status column: 45 of 49
-    eligible generations were once never judged and nothing recorded it.
+    Fixed by calling feedback_db.stuck_judge_results(older_than_s=300) instead
+    of re-deriving the same query — the exact helper preflight.py already uses
+    for this same "recovery queue" concept, with a 300s floor safely past the
+    120s ceiling. One definition of "stuck," not two that can drift apart,
+    which is how the missing threshold got here in the first place.
     """
     db = os.path.join(REPO, "testing/results/feedback.db")
     if not os.path.exists(db):
         return _finding("judge.stuck_rows", True, "medium",
                         "no local DB yet — nothing to check", "", "", fixable=False)
     try:
+        if REPO not in sys.path:
+            sys.path.insert(0, REPO)
+        import feedback_db
+        feedback_db.DB_PATH = db  # absolute — correct regardless of process cwd
+        stuck = feedback_db.stuck_judge_results(older_than_s=300)
+
         conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-        rows = conn.execute(
-            "SELECT COUNT(*) FROM judge_results WHERE status = 'pending'").fetchone()[0]
         bad = conn.execute(
             "SELECT COUNT(*) FROM judge_results "
             "WHERE status = 'abstained' AND overall IS NOT NULL").fetchone()[0]
@@ -273,16 +288,21 @@ def check_stuck_judge_rows():
         return _finding("judge.stuck_rows", True, "medium",
                         f"could not read judge_results ({e})", "", "", fixable=False)
     problems = []
-    if rows:
-        problems.append(f"{rows} judge_results row(s) stuck at status='pending'")
+    if stuck:
+        problems.append(f"{len(stuck)} judge_results row(s) stuck at status='pending' "
+                        f"for over 5 minutes")
+        for r in stuck[:10]:
+            problems.append(f"  gen {r['generation_id']} ({r['platform']}, "
+                            f"{r['judge_model']}) claimed at {r['created_at']}")
     if bad:
         problems.append(f"{bad} abstained row(s) stored with a non-NULL overall")
     return _finding(
-        "judge.stuck_rows", not problems, "medium",
-        "; ".join(problems) if problems else "no stuck or contradictory judge rows",
+        "judge.stuck_rows", not (stuck or bad), "medium",
+        (f"{len(stuck)} stuck, {bad} contradictory judge row(s)" if (stuck or bad)
+         else "no stuck or contradictory judge rows"),
         "\n".join(problems),
-        "sqlite3 testing/results/feedback.db \"select status, count(*) "
-        "from judge_results group by status\"",
+        "python3 -c \"import feedback_db; "
+        "print(feedback_db.stuck_judge_results(older_than_s=300))\"",
     )
 
 
