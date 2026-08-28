@@ -1,6 +1,7 @@
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 import hashlib
 import json
+import re
 import sys
 import urllib.request
 import os
@@ -55,9 +56,27 @@ def _prompt_hash(channel_template: str) -> str:
     return hashlib.sha256(channel_template.encode('utf-8')).hexdigest()[:12]
 
 class CORSRequestHandler(SimpleHTTPRequestHandler):
+    # Localhost only, any port — not a single hardcoded origin, so this survives
+    # Vite picking a different port when 5173 is taken. The property that matters
+    # for security is "localhost", not "5173": a remote page's browser-set Origin
+    # header can never read as localhost/127.0.0.1, so this can't be spoofed by an
+    # actual attacker the way a wildcard could.
+    _LOCAL_ORIGIN_RE = re.compile(r'^https?://(localhost|127\.0\.0\.1)(:\d+)?$')
+
     def end_headers(self):
-        # Enable CORS for all origins
-        self.send_header('Access-Control-Allow-Origin', '*')
+        # CORS used to be wildcard-open with no auth behind it — meaning any
+        # website you had open in another tab could fetch() this API directly
+        # and it would just work. Restricting to localhost origins closes that:
+        # a non-matching Origin gets no Allow-Origin header at all, so the
+        # browser blocks the response from being read by that page's JS.
+        # Costs nothing for real usage — the dev flow (`npm run dev`) never
+        # makes a genuinely cross-origin browser request to this port at all:
+        # the browser only ever talks to Vite's own origin, and Vite's dev
+        # proxy forwards server-side (Node-to-Node), which browser CORS does
+        # not apply to.
+        origin = self.headers.get('Origin', '')
+        if self._LOCAL_ORIGIN_RE.match(origin):
+            self.send_header('Access-Control-Allow-Origin', origin)
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, x-api-key')
         super().end_headers()
