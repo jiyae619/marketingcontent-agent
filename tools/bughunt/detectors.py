@@ -176,7 +176,8 @@ for name in ("call_anthropic", "call_openai", "call_gemini"):
         setattr(providers, name, lambda *a, **k: (_ for _ in ()).throw(
             AssertionError("bughunt probe attempted a paid provider call")))
 
-payload = {"scores": {c: 80 for c in FLAG_TAXONOMY},
+payload = {"scores": {c: {"score": 80, "reason": "canned reasoning for " + c}
+                      for c in FLAG_TAXONOMY},
            "overall": 80, "safety_pass": True,
            "summary": "canned", "confidence": "medium"}
 providers.call_local = lambda *a, **k: {
@@ -188,6 +189,16 @@ if route == "low-confidence":
     # The OTHER way to abstain: the model self-reports low confidence, with a
     # brief present. Same contract, different code path.
     payload["confidence"] = "low"
+    providers.call_local = lambda *a, **k: {
+        "ok": True, "cost_usd": 0.0, "latency_ms": 1, "text": json.dumps(payload)}
+    v = J.judge("some content", "kakaotalk",
+                generator_model="gemma3:4b", source_brief="a real brief")
+elif route == "unreasoned-score":
+    # A THIRD way in: brief present, confidence "medium" (neither other route
+    # fires), but one category has a score with no real reasoning behind it —
+    # the exact live shape found in production: hallucination and ai_slop both
+    # scored 0 with reason="", while overall stayed 90.
+    payload["scores"]["hallucination"] = {"score": 0, "reason": ""}
     providers.call_local = lambda *a, **k: {
         "ok": True, "cost_usd": 0.0, "latency_ms": 1, "text": json.dumps(payload)}
     v = J.judge("some content", "kakaotalk",
@@ -204,13 +215,16 @@ print(json.dumps({"judge_model": v.get("judge_model"),
                   "safety_pass": v.get("safety_pass"),
                   "reason": v.get("abstain_reason")}))
 ''' % (REPO, REPO)
-    # BOTH routes to abstention, because they are separate code paths and a fix to
-    # one is not a fix to the other. An earlier version of this detector probed only
-    # `no-brief`; an agent then nulled the score in that branch alone, and the
-    # partial fix passed. A contract test has to cover every way in.
+    # All THREE routes to abstention, because they are separate code paths and a fix
+    # to one is not a fix to the others. An earlier version of this detector probed
+    # only `no-brief`; an agent then nulled the score in that branch alone, and the
+    # partial fix passed. A contract test has to cover every way in — which is also
+    # why `unreasoned-score` was added the same day judge.py grew it: skipping that
+    # would repeat the exact mistake this comment is about.
     bad, seen = [], {}
     for route, why in (("no-brief", "source_brief=None"),
-                       ("low-confidence", 'model returned confidence="low"')):
+                       ("low-confidence", 'model returned confidence="low"'),
+                       ("unreasoned-score", 'a category scored with reason=""')):
         rc, out = _run([sys.executable, "-c", probe, route], timeout=120)
         if rc != 0:
             return _finding("judge.abstention_contract", False, "medium",

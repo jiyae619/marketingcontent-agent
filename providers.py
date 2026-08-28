@@ -17,9 +17,24 @@ for showing relative cost in the UI, not for billing.
 """
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
+
+# Every local call — generation AND judging, both go through call_local — waits
+# here before actually hitting Ollama. Nothing serialized concurrent local calls
+# before this: six platforms generating and judging at once fired straight at
+# one Ollama instance on an 8GB M3, and the same hardware limit CLAUDE.md already
+# states for co-resident models ("two models cannot co-reside") applies just as
+# much to concurrent REQUESTS. Measured effect of the missing gate: one judge
+# call that should take ~30-70s uncontended took 370.8s under six-way contention
+# and ended in an abstain, while a generation for the same batch was still
+# competing for the same runtime. Serializing trades a faster *feeling* first
+# result for a predictable one across the whole batch — the wall-clock total
+# for "generate all six" was already dominated by this contention, just
+# unevenly and invisibly.
+_LOCAL_CALL_GATE = threading.Semaphore(1)
 
 
 # (input $/Mtok, output $/Mtok)
@@ -275,12 +290,13 @@ def call_local(prompt: str, model: str = None, json_mode: bool = False,
         # llama3.2:3b went from unparseable to valid on the first try.
         payload["response_format"] = {"type": "json_object"}
     try:
-        data = _post_json(
-            base.rstrip("/") + "/chat/completions",
-            payload,
-            headers={"Authorization": f"Bearer {key}"},
-            timeout=120,  # local models can be slower than hosted APIs
-        )
+        with _LOCAL_CALL_GATE:
+            data = _post_json(
+                base.rstrip("/") + "/chat/completions",
+                payload,
+                headers={"Authorization": f"Bearer {key}"},
+                timeout=120,  # local models can be slower than hosted APIs
+            )
         choice = (data.get("choices") or [{}])[0]
         text = choice.get("message", {}).get("content", "")
         usage = data.get("usage", {}) or {}

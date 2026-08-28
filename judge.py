@@ -239,6 +239,30 @@ def judge(content, platform, *, model=None, generator_model=None, source_brief=N
     # An unsure judge must route to a human instead of manufacturing a number.
     verdict["confidence"] = parsed.get("confidence")
     verdict["abstained"] = (verdict["confidence"] == "low")
+    # Deterministic abstention, third route: a category with a score but no real
+    # reasoning behind it (empty/missing "reason"), or a category FLAG_TAXONOMY
+    # requires that is missing from `scores` entirely. The schema requires the
+    # "reason" key to be a string but cannot require it to be non-empty — JSON
+    # Schema's `type: string` allows "" — and the local provider falls back to
+    # Ollama's json_mode, a weaker guarantee than a real structured-output schema.
+    # Either gap lets an unreasoned score through. An unreasoned score is the same
+    # "I don't actually know" case abstention exists for elsewhere: the model
+    # produced a number without evaluating it, and letting that number into
+    # overall/safety_pass contaminates the aggregate exactly as
+    # tools/abstention-checker/README.md already documents for a missing referent.
+    # Caught live: a real verdict scored hallucination=0 and ai_slop=0, both with
+    # reason="", while overall stayed at 90 — nothing checked that overall agreed
+    # with what it was supposedly built from.
+    scores = verdict["scores"] if isinstance(verdict["scores"], dict) else {}
+    unreasoned = sorted(
+        cat for cat in FLAG_TAXONOMY
+        if not (scores.get(cat).get("reason", "").strip()
+                if isinstance(scores.get(cat), dict) else True)
+    )
+    if unreasoned:
+        verdict["abstained"] = True
+        verdict["confidence"] = "low"
+        verdict["abstain_reason"] = "unreasoned or missing score(s): " + ", ".join(unreasoned)
     # Deterministic abstention. Whether a brief exists is a fact the code knows, so it
     # is not left to the model — and the model does not do it: llama3.2:3b returned
     # confidence="medium" and overall=80 for this same content with source_brief=None,
