@@ -127,6 +127,25 @@ def check_data_layer():
                     _clip(out), "python3 scripts/test_feedback_db.py")
 
 
+def check_loop_e2e():
+    """End-to-end fixture for the human-in-the-loop pipeline.
+
+    check_data_layer above asserts the write path in isolation. This asserts the
+    PIPELINE: a draft, a human verdict, the diff that verdict produced, the family
+    it routed to, what then reaches the synthesis prompt, and what the regression
+    gate does about a worse profile. Those stages each work alone and can still be
+    wired together wrongly — the guard that matters most here is that a grounding
+    edit never reaches the voice prompt, which is a property of the seam between
+    two components rather than of either one.
+
+    Stubs providers, so no model call, no keys and no spend.
+    """
+    rc, out = _run([sys.executable, "scripts/test_e2e_loop.py"], timeout=300)
+    return _finding("loop.e2e", rc == 0, "high",
+                    "end-to-end loop checks fail" if rc else "end-to-end loop checks pass",
+                    _clip(out), "python3 scripts/test_e2e_loop.py")
+
+
 # --------------------------------------------------------------------------
 # Judge-pipeline invariants
 #
@@ -420,6 +439,7 @@ ALL = [
     check_preflight,
     check_clean_clone_build,
     check_data_layer,
+    check_loop_e2e,
     check_abstention_contract,
     check_stuck_judge_rows,
     check_eval_quality,
@@ -439,6 +459,7 @@ def run_all(quick=False, only=None):
             "check_preflight": "env.preflight",
             "check_clean_clone_build": "build.clean_clone",
             "check_data_layer": "data.feedback_db",
+            "check_loop_e2e": "loop.e2e",
             "check_abstention_contract": "judge.abstention_contract",
             "check_stuck_judge_rows": "judge.stuck_rows",
             "check_eval_quality": "eval.gate_metrics",

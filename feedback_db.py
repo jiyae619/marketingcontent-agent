@@ -762,6 +762,28 @@ def save_voice_profile(platform: str, style_text: str,
         )
 
 
+def voice_profile_history(platform: str, limit: int = 5) -> List[Dict]:
+    """Newest-first profile versions for a platform.
+
+    get_voice_profile() returns the ACTIVE one and hides staleness behind a None,
+    which is right for generation and useless for a regression gate: comparing a new
+    profile against the one it replaced needs both texts, and the table is append-only
+    precisely so the predecessor survives. This is the reader for that.
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT platform, version, style_text, based_on, created_at
+            FROM voice_profile_versions
+            WHERE platform = ?
+            ORDER BY version DESC
+            LIMIT ?
+            """,
+            (platform, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
 def recent_copies(platform: str, limit: int = 3) -> List[Dict]:
     """Most recent approved/edited content for a platform — drives the learning loop.
 

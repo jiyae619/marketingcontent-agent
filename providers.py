@@ -254,7 +254,8 @@ def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001",
 
 
 def call_local(prompt: str, model: str = None, json_mode: bool = False,
-               system: str = None, json_schema: dict = None) -> dict:
+               system: str = None, json_schema: dict = None,
+               temperature: float = None) -> dict:
     """Call a locally-run LLM via an OpenAI-compatible endpoint.
 
     Works with Ollama, LM Studio, llama.cpp server, vLLM, etc. — anything that
@@ -276,6 +277,12 @@ def call_local(prompt: str, model: str = None, json_mode: bool = False,
     msgs = ([{"role": "system", "content": system}] if system else []) + \
            [{"role": "user", "content": prompt}]
     payload = {"model": model, "messages": msgs}
+    # Sampling is left to the server's default unless a caller asks, EXCEPT that a
+    # caller comparing two prompts has to pin it: at the default temperature the
+    # difference between two runs is mostly sampling noise, so a regression gate
+    # would be measuring the sampler rather than the change it is meant to catch.
+    if temperature is not None:
+        payload["temperature"] = temperature
     if json_schema:
         # Schema beats bare json_object: it constrains the SHAPE, not just the syntax.
         # A small model can emit perfectly valid JSON with none of the keys we read.

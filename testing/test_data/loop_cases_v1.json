@@ -1,0 +1,126 @@
+{
+  "set_version": "v1",
+  "description": "End-to-end loop cases. Each is a draft plus what a human did to it, and what the pipeline must then do: classify the verdict, derive the family from the chip, compute the diff, and route the result to the voice corpus or the defect list. pct_changed and n_edits are FROZEN outputs of diff_ops — if they move, the metric changed, and every number derived from it changed with it.",
+  "cases": [
+    {
+      "id": "approve-unchanged",
+      "platform": "linkedin",
+      "brief": "PKNIC builders' night, Seattle, Friday 6pm. Three talks then open floor. Limited seats.",
+      "draft": "PKNIC is hosting a builders' night in Seattle this Friday. Doors at 6, three short talks, then open floor. Seats are limited.",
+      "human": {
+        "action": "approve",
+        "final": "PKNIC is hosting a builders' night in Seattle this Friday. Doors at 6, three short talks, then open floor. Seats are limited.",
+        "chip": null,
+        "note": null
+      },
+      "expect": {
+        "verdict": "approve",
+        "family": null,
+        "pct_changed": 0.0,
+        "n_edits": 0,
+        "in_voice_corpus": false,
+        "in_defect_list": false
+      }
+    },
+    {
+      "id": "edit-voice-aislop",
+      "platform": "linkedin",
+      "brief": "PKNIC builders' night, Seattle, Friday 6pm. Three talks then open floor. Limited seats.",
+      "draft": "In today's fast-paced world, our builders' night is a true game-changer that will take your career to the next level!",
+      "human": {
+        "action": "edit",
+        "final": "Builders' night is this Friday in Seattle. Doors at 6. Seats are limited.",
+        "chip": "ai_slop",
+        "note": "hype, cut it"
+      },
+      "expect": {
+        "verdict": "edit",
+        "family": "voice",
+        "pct_changed": 87.9,
+        "n_edits": 2,
+        "in_voice_corpus": true,
+        "in_defect_list": false
+      }
+    },
+    {
+      "id": "edit-voice-convention",
+      "platform": "linkedin",
+      "brief": "Office hours restart Thursday, 30 minutes, no agenda.",
+      "draft": "Office hours are back. Thursdays, 30 minutes, no agenda.",
+      "human": {
+        "action": "edit",
+        "final": "Office hours are back. Thursdays, 30 minutes, no agenda. Bring the thing you are stuck on.",
+        "chip": "convention",
+        "note": "needs a closing line"
+      },
+      "expect": {
+        "verdict": "edit",
+        "family": "voice",
+        "pct_changed": 28.0,
+        "n_edits": 1,
+        "in_voice_corpus": true,
+        "in_defect_list": false
+      }
+    },
+    {
+      "id": "edit-grounding-wrongdetail",
+      "platform": "linkedin",
+      "brief": "PKNIC builders' night, Seattle, Friday 6pm.",
+      "draft": "Join us Thursday at 6pm in Seattle for builders' night.",
+      "human": {
+        "action": "edit",
+        "final": "Join us Friday at 6pm in Seattle for builders' night.",
+        "chip": "wrong_detail",
+        "note": "brief says Friday"
+      },
+      "expect": {
+        "verdict": "edit",
+        "family": "grounding",
+        "pct_changed": 10.0,
+        "n_edits": 1,
+        "in_voice_corpus": false,
+        "in_defect_list": true
+      }
+    },
+    {
+      "id": "edit-grounding-hallucination",
+      "platform": "instagram",
+      "brief": "Builders' night Friday. Free to attend.",
+      "draft": "Builders' night Friday. Tickets are $45 per person and doors open at 3:00 PM sharp.",
+      "human": {
+        "action": "edit",
+        "final": "Builders' night Friday. Free to attend.",
+        "chip": "hallucination",
+        "note": "invented a price and a time"
+      },
+      "expect": {
+        "verdict": "edit",
+        "family": "grounding",
+        "pct_changed": 71.4,
+        "n_edits": 1,
+        "in_voice_corpus": false,
+        "in_defect_list": true
+      }
+    },
+    {
+      "id": "reject-flagged",
+      "platform": "x",
+      "brief": "Office hours restart Thursday.",
+      "draft": "Unlock your potential! This is the opportunity you have been waiting for.",
+      "human": {
+        "action": "reject",
+        "final": null,
+        "chip": "irrelevant",
+        "note": "says nothing about office hours"
+      },
+      "expect": {
+        "verdict": "reject",
+        "family": "grounding",
+        "pct_changed": null,
+        "n_edits": null,
+        "in_voice_corpus": false,
+        "in_defect_list": true
+      }
+    }
+  ]
+}
