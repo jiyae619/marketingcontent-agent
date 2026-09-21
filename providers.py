@@ -93,7 +93,7 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: int = 60):
 
 
 def call_gemini(prompt: str, model: str = "gemini-2.5-flash", system: str = None,
-                json_schema: dict = None) -> dict:
+                json_schema: dict = None, temperature: float = None) -> dict:
     # Single choke point for billing: every paid path goes through here.
     if local_only():
         return _refused(model)
@@ -109,6 +109,8 @@ def call_gemini(prompt: str, model: str = "gemini-2.5-flash", system: str = None
             prompt = f"{system}\n\n{prompt}"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
         gen_cfg = {"thinkingConfig": {"thinkingBudget": 0}}
+        if temperature is not None:
+            gen_cfg["temperature"] = temperature
         if json_schema:
             gen_cfg["responseMimeType"] = "application/json"
             gen_cfg["responseSchema"] = _gemini_schema(json_schema)
@@ -136,7 +138,7 @@ def call_gemini(prompt: str, model: str = "gemini-2.5-flash", system: str = None
 
 
 def call_openai(prompt: str, model: str = "gpt-4o-mini", system: str = None,
-                json_schema: dict = None) -> dict:
+                json_schema: dict = None, temperature: float = None) -> dict:
     # Single choke point for billing: every paid path goes through here.
     if local_only():
         return _refused(model)
@@ -147,6 +149,8 @@ def call_openai(prompt: str, model: str = "gpt-4o-mini", system: str = None,
     msgs = ([{"role": "system", "content": system}] if system else []) + \
            [{"role": "user", "content": prompt}]
     payload = {"model": model, "messages": msgs}
+    if temperature is not None:
+        payload["temperature"] = temperature
     if json_schema:
         payload["response_format"] = {
             "type": "json_schema",
@@ -192,7 +196,8 @@ ANTHROPIC_MAX_TOKENS = 8192
 
 
 def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001",
-                   system: str = None, json_schema: dict = None) -> dict:
+                   system: str = None, json_schema: dict = None,
+                   temperature: float = None) -> dict:
     # Single choke point for billing: every paid path goes through here.
     if local_only():
         return _refused(model)
@@ -211,6 +216,8 @@ def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001",
     }
     if system:
         payload["system"] = system
+    if temperature is not None:
+        payload["temperature"] = temperature
     if json_schema:
         # Structured outputs. Supported on Haiku 4.5, Sonnet 5, Opus 5 (and Opus 4.5 /
         # 4.1). NOT verified against claude-sonnet-4-6 — if that model 400s on
