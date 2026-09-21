@@ -55,6 +55,61 @@ def _prompt_hash(channel_template: str) -> str:
     """
     return hashlib.sha256(channel_template.encode('utf-8')).hexdigest()[:12]
 
+# Voice synthesis runs on a LOCAL model. It used to call providers.call_gemini, which
+# is refused outright under LOCAL_ONLY=true — so on this project's own default config
+# the learning loop's synthesis half never ran, and the only trace was one print line.
+#
+# It defaults to the GENERATOR's model rather than the judge's, and that is a memory
+# decision, not a quality one: CLAUDE.md rule 1 says two models cannot co-reside on an
+# 8GB box, and providers._evict_others enforces it by unloading whatever else is
+# resident. Pointing synthesis at a second model would therefore evict the generator
+# on every approve — ~3.3GB reloaded, seconds of latency, on the hot path. Same model
+# = no eviction. judge != generator does not apply here: summarizing your own posts
+# produces no verdict, so there is nothing to grade itself.
+VOICE_MODEL = os.getenv('VOICE_MODEL') or os.getenv('LOCAL_LLM_MODEL')
+
+# A synthesized profile is injected into EVERY later generation for that platform, so
+# a bad one degrades everything downstream silently — and the voice_version bump
+# invalidates the cache, removing the rows you would have compared against. The old
+# code accepted any non-empty string. That was survivable behind gemini-2.5-flash and
+# is not behind a 4B: small models pad, preface, and sometimes just hand a sample back.
+VOICE_MIN_WORDS = 20
+VOICE_MAX_WORDS = 200
+_VOICE_ECHO_NGRAM = 8
+
+
+def _clean_voice_profile(text, samples_text):
+    """Return (profile, None) if usable, else (None, reason).
+
+    Rejecting is the safe outcome: no profile means the loop falls back to raw
+    few-shot, which is a weaker prompt but a correct one.
+    """
+    if not text:
+        return None, "empty response"
+    t = text.strip()
+    # Small models like to wrap prose in fences and announce themselves first.
+    if t.startswith("```"):
+        t = re.sub(r"^```[a-zA-Z]*\n?|\n?```$", "", t).strip()
+    first, _, rest = t.partition("\n")
+    if rest and len(first) < 60 and first.rstrip().endswith(":"):
+        t = rest.strip()
+    t = re.sub(r"^[#*\s]+", "", t).strip()
+
+    words = t.split()
+    if len(words) < VOICE_MIN_WORDS:
+        return None, f"too short ({len(words)} words)"
+    if len(words) > VOICE_MAX_WORDS:
+        return None, f"too long ({len(words)} words)"
+
+    # Echo guard: a small model asked to summarize sometimes returns one of the inputs.
+    # That would install a single past post as the style rule for every future one.
+    hay = " ".join(samples_text.split()).lower()
+    for i in range(len(words) - _VOICE_ECHO_NGRAM + 1):
+        if " ".join(words[i:i + _VOICE_ECHO_NGRAM]).lower() in hay:
+            return None, "echoes the input samples verbatim"
+    return t, None
+
+
 class CORSRequestHandler(SimpleHTTPRequestHandler):
     # Localhost only, any port — not a single hardcoded origin, so this survives
     # Vite picking a different port when 5173 is taken. The property that matters
@@ -114,11 +169,14 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                              'default': judge.DEFAULT_JUDGE_KEY})
             return
 
-        # Flag taxonomy for the review UI's flag chips — one source of truth.
+        # Chip vocabulary for the review UI — one source of truth. Serves
+        # EDIT_REASONS, not FLAG_TAXONOMY: the chips answer "why did the human change
+        # this", which is a richer question than "what did the judge detect", and
+        # EDIT_REASONS is a superset with identical families. Same response shape.
         if self.path == '/api/flags':
             self._json(200, {'taxonomy': [
                 {'category': c, 'family': f}
-                for c, f in feedback_db.FLAG_TAXONOMY.items()
+                for c, f in feedback_db.EDIT_REASONS.items()
             ]})
             return
 
@@ -188,11 +246,25 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             return base_prompt
 
     def _maybe_synthesize_voice(self, platform: str) -> None:
-        """Triggered after a copy is logged. If enough new copies exist, synthesize."""
+        """Triggered after a copy is logged. If enough new copies exist, synthesize.
+
+        Runs on a LOCAL model (see VOICE_MODEL) and learns from two signals rather
+        than one: posts the human accepted, and — new — the voice-family changes the
+        human MADE. The second is the stronger signal and was captured but unread:
+        feedback_events has stored original_content and final_content all along while
+        this loop looked only at final_content. Accepted posts show what good output
+        looks like; edits show what this person reliably fixes, which is the thing a
+        style profile is actually for.
+
+        Grounding edits are filtered out upstream by feedback_db.voice_edits(), not
+        here: "changed Friday to Thursday" is a fact fix, and feeding it in as style
+        teaches the model to write Thursday.
+        """
         try:
             count = feedback_db.copy_count(platform)
             existing = feedback_db.get_voice_profile(platform)
-            # Synthesize on first copy and every 3 thereafter
+            # Synthesize on the first copy, then again once get_voice_profile reports
+            # the active version stale (3+ new approvals/edits since it was built).
             if count == 0 or (existing is not None):
                 return
             examples = feedback_db.recent_copies(platform, limit=6)
@@ -203,29 +275,58 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 f"Sample {i+1}:\n{ex['final_content']}"
                 for i, ex in enumerate(examples)
             )
-            synthesis_prompt = (
-                f"You are analyzing writing samples from a marketer to extract their voice profile.\n\n"
+
+            edits_block = ""
+            edits = feedback_db.voice_edits(platform, limit=6)
+            lines = []
+            for e in edits:
+                try:
+                    ops = json.loads(e.get("edit_ops") or "[]")
+                except (ValueError, TypeError):
+                    continue
+                for op in ops[:3]:
+                    frm = (op.get("from") or "").strip()
+                    to = (op.get("to") or "").strip()
+                    if not (frm or to):
+                        continue
+                    lines.append(f'- [{e.get("flag_category")}] "{frm[:120]}" -> "{to[:120]}"')
+            if lines:
+                edits_block = ("\n\nEdits this person MADE to drafts — each shows text "
+                               "they rejected and what they replaced it with. These are "
+                               "the strongest signal of their taste:\n"
+                               + "\n".join(lines[:12]))
+
+            system = (
+                "You extract a writing-voice profile from a marketer's own posts. "
+                "You describe HOW they write, never WHAT any individual post said. "
+                "Never quote a sample back. Output the profile only, with no preamble, "
+                "no heading and no markdown."
+            )
+            user = (
                 f"Platform: {platform}\n\n"
-                f"Samples:\n{samples_text}\n\n"
-                f"Write a concise voice profile (3-5 sentences, under 120 words) describing:\n"
-                f"- Sentence length and rhythm\n"
-                f"- Tone (formal/casual, direct/warm, etc.)\n"
-                f"- Characteristic words, phrases, or patterns\n"
-                f"- What they emphasize and what they avoid\n\n"
-                f"Return ONLY the voice profile description, nothing else."
+                f"Posts they accepted:\n{samples_text}{edits_block}\n\n"
+                "Write a voice profile of 3-5 sentences, under 120 words, covering:\n"
+                "- Sentence length and rhythm\n"
+                "- Tone (formal/casual, direct/warm)\n"
+                "- Language and formality register, if the samples show one\n"
+                "- Characteristic words or patterns, and what they avoid\n"
             )
 
-            # Route through providers.call_gemini, which sets thinkingBudget=0.
-            # A raw call with maxOutputTokens=200 and no thinking budget lets
-            # gemini-2.5-flash spend the cap on internal reasoning, returning a
-            # profile truncated mid-sentence ("The marketer employs a direct,").
-            res = providers.call_gemini(synthesis_prompt)
-            if res.get("ok") and res.get("text"):
-                style = res["text"].strip()
-                feedback_db.save_voice_profile(platform, style)
-                print(f"[voice] synthesized {platform} ({count} copies → {len(style)} chars)")
-            else:
-                print(f"[voice] synthesis returned nothing for {platform}: {res.get('error')}")
+            res = providers.call_local(user, model=VOICE_MODEL, system=system)
+            if not res.get("ok"):
+                print(f"[voice] SYNTHESIS FAILED {platform} model={VOICE_MODEL!r}: "
+                      f"{res.get('error')} — falling back to raw few-shot")
+                return
+            style, reason = _clean_voice_profile(res.get("text"), samples_text + edits_block)
+            if style is None:
+                # Refusing is the safe outcome. No profile means raw few-shot, which is
+                # a weaker prompt; a bad profile is a wrong one, applied to everything.
+                print(f"[voice] SYNTHESIS REJECTED {platform} model={VOICE_MODEL!r}: "
+                      f"{reason} — keeping raw few-shot rather than installing it")
+                return
+            feedback_db.save_voice_profile(platform, style)
+            print(f"[voice] synthesized {platform} on {VOICE_MODEL} "
+                  f"({count} copies, {len(lines)} voice edits -> {len(style.split())} words)")
         except Exception as e:
             print(f"[voice] synthesis failed for {platform}: {e}")
     
@@ -352,7 +453,8 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 final = payload.get('final_content', '')
                 gen_id = payload.get('generation_id')
                 verdict_override = payload.get('verdict')       # explicit, e.g. 'reject'
-                flag_category = payload.get('flag_category')    # optional taxonomy flag
+                flag_category = payload.get('flag_category')    # chip from EDIT_REASONS
+                edit_note = payload.get('edit_note')            # free text, never parsed
                 if platform not in VALID_PLATFORMS:
                     self._json(400, {'error': 'platform required'})
                     return
@@ -384,6 +486,20 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                         return
                     verdict = feedback_db.classify_verdict(original, final)
                     final_content = final
+                    # The chip is REQUIRED on an edit. Before this it shipped only on
+                    # reject (ReviewPanel.jsx) — the rarest action — which is why 10
+                    # feedback events produced 0 flags and the taxonomy was never
+                    # exercised. An edit without a family cannot be routed: the loop
+                    # has no way to tell "cut the cliche" from "fixed the date", and
+                    # guessing is what teaches a fact as a style rule.
+                    if verdict == 'edit' and not flag_category:
+                        # pct_changed rides along so the UI can show the reviewer how
+                        # much they actually rewrote before asking them why.
+                        d = feedback_db.diff_ops(original, final_content)
+                        self._json(400, {'error': 'flag_category required on an edit',
+                                         'choices': feedback_db.EDIT_REASONS,
+                                         'pct_changed': d.get('pct_changed')})
+                        return
 
                 try:
                     row_id = feedback_db.log_feedback(
@@ -393,12 +509,15 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                         original_content=original,
                         final_content=final_content,
                         flag_category=flag_category,
+                        edit_note=edit_note,
                     )
                 except ValueError as ve:
                     self._json(400, {'error': str(ve)})
                     return
                 print(f"[feedback] {platform} {verdict} id={row_id} gen={gen_id} "
-                      f"flag={flag_category or '-'} voice_v={feedback_db.voice_version(platform)}")
+                      f"flag={flag_category or '-'}"
+                      f"/{feedback_db.EDIT_REASONS.get(flag_category, '-')} "
+                      f"voice_v={feedback_db.voice_version(platform)}")
                 self._json(200, {'id': row_id, 'platform': platform, 'verdict': verdict})
 
                 # Voice synthesis only learns from accepted content (approve/edit).
@@ -435,16 +554,34 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             generator_model = payload.get('generator_model')
             gen_id = payload.get('generation_id')
             source_brief = payload.get('source_brief')
-            # If we know the generation, pull both from the data spine: its recorded
-            # model (to enforce judge != generator) and its original_input, which the
-            # grounding criteria are defined against.
-            if gen_id is not None and (generator_model is None or source_brief is None):
+            # If we know the generation, the data spine is AUTHORITATIVE for the
+            # generator model — the client's value is never trusted over it.
+            #
+            # The old condition only consulted the DB when the client had OMITTED
+            # `generator_model`, so supplying one bypassed judge != generator
+            # entirely: post content written by gemma3:4b with
+            # generator_model="gpt-4o-mini" and gemma3:4b grades its own output.
+            # That is the exact incident CLAUDE.md rule 3 exists for, reachable
+            # over HTTP. A bogus `generation_id` is refused for the same reason —
+            # otherwise it is a one-line way back around the guard.
+            #
+            # `source_brief` keeps its previous precedence (client value wins, DB
+            # fills the gap). A client-supplied brief can still weaken the
+            # grounding criteria; that is a separate hole, noted not fixed.
+            if gen_id is not None:
                 g = feedback_db.get_generation(gen_id)
-                if g:
-                    if generator_model is None:
-                        generator_model = g.get('model')
-                    if source_brief is None:
-                        source_brief = g.get('original_input')
+                if not g:
+                    self._json(400, {'error': f'unknown generation_id: {gen_id}'})
+                    return
+                recorded = g.get('model')
+                if recorded:
+                    if generator_model and generator_model != recorded:
+                        print(f"[judge] ignoring client generator_model="
+                              f"{generator_model!r} for generation {gen_id}; "
+                              f"recorded model is {recorded!r}")
+                    generator_model = recorded
+                if source_brief is None:
+                    source_brief = g.get('original_input')
 
             try:
                 verdict = judge.judge(content, platform, model=model,
@@ -587,7 +724,23 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             # A hit returns a real generation (content + id), so a copy of cached
             # content links correctly and can never be orphaned.
             v_ver = feedback_db.voice_version(platform)
-            cache_key = feedback_db.make_cache_key(platform, user_message, link_url, has_image, v_ver)
+            # The key must describe what PRODUCED the text, not only the input, so the
+            # channel prompt and the RESOLVED generator are computed before the lookup
+            # rather than after it. With an input-only key, asking a second model for a
+            # brief the first model had already written returned the first model's post
+            # under the second one's name — and the cached row still carried the
+            # original model, so the swap was invisible in the data spine too. That is
+            # a silent failure of the one experiment /api/compare exists to run.
+            channel_template = self.load_prompt_from_md(platform)
+            prompt_version = _prompt_hash(channel_template)
+            try:
+                _gk, _gl, resolved_model, _gf = generators.resolve(generator_key)
+            except ValueError as ve:
+                self._json(400, {'error': str(ve)})
+                return
+            cache_key = feedback_db.make_cache_key(platform, user_message, link_url,
+                                                   has_image, v_ver,
+                                                   resolved_model, prompt_version)
             cached = feedback_db.generation_by_cache_key(cache_key)
             if cached:
                 print(f"[cache] HIT  {platform} key={cache_key[:12]}… id={cached['id']}")
@@ -597,11 +750,12 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                     'from_cache': True,
                 })
                 return
-            print(f"[cache] MISS {platform} key={cache_key[:12]}…  voice_v={v_ver}")
+            print(f"[cache] MISS {platform} key={cache_key[:12]}…  voice_v={v_ver} "
+                  f"model={resolved_model}")
 
             # Build prompt entirely server-side — frontend no longer sends system.
-            channel_template = self.load_prompt_from_md(platform)
-            prompt_version = _prompt_hash(channel_template)
+            # channel_template and prompt_version are loaded above the cache check,
+            # because the key is derived from them.
             system_prompt = self._with_voice_examples(platform, channel_template)
             # Two parts, not one string — providers.py puts `system` in each API's
             # native slot. Gemini re-concatenates in exactly this order, so its prompt

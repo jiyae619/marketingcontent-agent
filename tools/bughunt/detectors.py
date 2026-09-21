@@ -203,6 +203,19 @@ elif route == "unreasoned-score":
         "ok": True, "cost_usd": 0.0, "latency_ms": 1, "text": json.dumps(payload)}
     v = J.judge("some content", "kakaotalk",
                 generator_model="gemma3:4b", source_brief="a real brief")
+elif route == "missing-category":
+    # The SECOND SHAPE of the unreasoned route, and a separate branch in the
+    # code: the category is absent from `scores` altogether rather than present
+    # with reason="". The local provider falls back to Ollama's json_mode, which
+    # constrains syntax and not shape, so a small model can simply drop a key.
+    # This shape shipped broken — the isinstance guard was inverted, so a missing
+    # category counted as reasoned and the verdict persisted as `graded` — while
+    # the reason="" shape above passed. One probe per shape, for that reason.
+    payload["scores"].pop("kr_en_register", None)
+    providers.call_local = lambda *a, **k: {
+        "ok": True, "cost_usd": 0.0, "latency_ms": 1, "text": json.dumps(payload)}
+    v = J.judge("some content", "kakaotalk",
+                generator_model="gemma3:4b", source_brief="a real brief")
 else:
     v = J.judge("some content", "kakaotalk",
                 generator_model="gemma3:4b", source_brief=None)
@@ -215,16 +228,19 @@ print(json.dumps({"judge_model": v.get("judge_model"),
                   "safety_pass": v.get("safety_pass"),
                   "reason": v.get("abstain_reason")}))
 ''' % (REPO, REPO)
-    # All THREE routes to abstention, because they are separate code paths and a fix
-    # to one is not a fix to the others. An earlier version of this detector probed
-    # only `no-brief`; an agent then nulled the score in that branch alone, and the
-    # partial fix passed. A contract test has to cover every way in — which is also
-    # why `unreasoned-score` was added the same day judge.py grew it: skipping that
-    # would repeat the exact mistake this comment is about.
+    # Every route to abstention, and every SHAPE of each route, because they are
+    # separate code paths and a fix to one is not a fix to the others. An earlier
+    # version of this detector probed only `no-brief`; an agent then nulled the score
+    # in that branch alone, and the partial fix passed. A contract test has to cover
+    # every way in — which is why `unreasoned-score` was added the same day judge.py
+    # grew it, and why `missing-category` is separate from it: the two shapes share a
+    # comment in judge.py but not a branch, and the missing-key shape was inverted and
+    # silently dead while the empty-reason shape worked.
     bad, seen = [], {}
     for route, why in (("no-brief", "source_brief=None"),
                        ("low-confidence", 'model returned confidence="low"'),
-                       ("unreasoned-score", 'a category scored with reason=""')):
+                       ("unreasoned-score", 'a category scored with reason=""'),
+                       ("missing-category", "a taxonomy category absent from scores")):
         rc, out = _run([sys.executable, "-c", probe, route], timeout=120)
         if rc != 0:
             return _finding("judge.abstention_contract", False, "medium",

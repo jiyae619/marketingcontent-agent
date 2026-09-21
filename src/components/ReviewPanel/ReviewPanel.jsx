@@ -48,6 +48,12 @@ export function ReviewPanel({ platform, content, generationId, judgeModel, onSta
   const [judging, setJudging] = useState(false);
   const [flags, setFlags] = useState([]);
   const [rejecting, setRejecting] = useState(false);
+  // An edit is classified SERVER-side (classify_verdict compares against the stored
+  // original, which the UI does not hold), so the flow is: submit optimistically,
+  // and if the server says a chip is required, ask for it and resubmit.
+  const [pendingEdit, setPendingEdit] = useState(null);
+  const [editReason, setEditReason] = useState(null);
+  const [note, setNote] = useState('');
   const [verdict, setVerdict] = useState(null);
   const [judgeState, setJudgeState] = useState('unknown');
 
@@ -134,18 +140,39 @@ export function ReviewPanel({ platform, content, generationId, judgeModel, onSta
         body: JSON.stringify(body),
       });
       const d = await res.json();
-      if (res.ok) { setVerdict(d.verdict); onStatus?.('success', okMsg(d.verdict)); }
-      else onStatus?.('error', d.error || 'Could not record verdict');
+      if (res.ok) { setVerdict(d.verdict); onStatus?.('success', okMsg(d.verdict)); return { ok: true, d }; }
+      // A missing chip is not an error the reviewer should see as one — it is the
+      // next step of the flow, so it is handled by the caller rather than shouted.
+      if (!d?.choices) onStatus?.('error', d.error || 'Could not record verdict');
+      return { ok: false, d };
     } catch {
       onStatus?.('error', 'Verdict request failed');
+      return { ok: false, d: null };
     }
   };
 
+  const okMsg = (v) => (v === 'edit' ? `✓ Saved your edit for ${platform}` : `✓ Approved ${platform}`);
+
   const approve = async () => {
-    await postVerdict(
-      { platform, final_content: content, generation_id: generationId },
-      (v) => (v === 'edit' ? `✓ Saved your edit for ${platform}` : `✓ Approved ${platform}`),
+    const { ok, d } = await postVerdict(
+      { platform, final_content: content, generation_id: generationId }, okMsg,
     );
+    if (!ok) {
+      if (d?.choices) setPendingEdit({ pct: d.pct_changed });
+      return;
+    }
+    try { await navigator.clipboard.writeText(content); } catch { /* clipboard optional */ }
+  };
+
+  const submitEdit = async () => {
+    if (!editReason) return;
+    const { ok } = await postVerdict(
+      { platform, final_content: content, generation_id: generationId,
+        flag_category: editReason, edit_note: note || undefined },
+      okMsg,
+    );
+    if (!ok) return;
+    setPendingEdit(null); setEditReason(null); setNote('');
     try { await navigator.clipboard.writeText(content); } catch { /* clipboard optional */ }
   };
 
@@ -223,6 +250,40 @@ export function ReviewPanel({ platform, content, generationId, judgeModel, onSta
         {verdict && <span className={`rp-verdict rp-verdict-${verdict}`}>Recorded: {verdict}</span>}
         <span className="rp-later">on approve → schedule / publish (later)</span>
       </div>
+
+      {pendingEdit && (
+        <div className="rp-flags">
+          <div className="rp-flags-lead">
+            You changed <b>{pendingEdit.pct ?? '—'}%</b> of this draft. What kind of change was it?
+            {' '}A style fix teaches the voice loop; a fact fix never does.
+          </div>
+          {['voice', 'grounding'].map((fam) => (
+            <div className="rp-chip-row" key={fam}>
+              <span className="rp-chip-rowlabel">{fam === 'voice' ? 'Reads wrong' : 'Facts wrong'}</span>
+              <div className="rp-chips">
+                {flags.filter((f) => f.family === fam).map((f) => (
+                  <button key={f.category}
+                          className={`rp-chip rp-chip-${f.family}${editReason === f.category ? ' rp-chip-on' : ''}`}
+                          onClick={() => setEditReason(f.category)}>
+                    <span className="rp-chip-dot" /> {f.category.replace(/_/g, ' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <textarea className="rp-note" maxLength={200} value={note}
+                    placeholder="Anything else? (optional, not parsed — a human reads it)"
+                    onChange={(e) => setNote(e.target.value)} />
+          <div className="rp-chip-row">
+            <Button variant="primary" size="small" onClick={submitEdit} disabled={!editReason}>
+              Save edit
+            </Button>
+            <button className="rp-chip rp-chip-plain" onClick={() => { setPendingEdit(null); setEditReason(null); setNote(''); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {rejecting && (
         <div className="rp-flags">

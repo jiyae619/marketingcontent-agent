@@ -103,6 +103,22 @@ if local_only:
     else:
         fail("paid providers refuse", f"only {refused} refused")
 
+# --- voice synthesis: the learning loop's second model ------------------------
+# This existed and silently did nothing. It was hard-wired to providers.call_gemini,
+# which LOCAL_ONLY refuses outright, so on this project's own default config the
+# synthesis half of the loop never ran and the only trace was one print line in a
+# background thread. Preflight is where "what actually runs" is supposed to be
+# visible, so it belongs here rather than being rediscovered later.
+v_model = os.getenv("VOICE_MODEL") or os.getenv("LOCAL_LLM_MODEL")
+if not v_model:
+    warn("voice synthesis", "no VOICE_MODEL/LOCAL_LLM_MODEL — loop falls back to raw few-shot")
+elif local_only and v_model != g_model:
+    # Not a failure, but worth seeing: a second model evicts the generator on every
+    # approve (CLAUDE.md rule 1 — two models cannot co-reside on 8GB).
+    warn("voice synthesis", f"{v_model} differs from generator {g_model} — evicts it on each run")
+else:
+    ok("voice synthesis", f"{v_model}  (local, same as generator — no eviction)")
+
 # --- local models installed and small enough ---------------------------------
 installed = ollama_models()
 if not installed:

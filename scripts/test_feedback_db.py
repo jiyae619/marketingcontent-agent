@@ -83,7 +83,7 @@ def test_u1_provenance_and_migration():
 def test_u2_cache_as_generation():
     print("U2 cache merged into generations")
     fresh_db()
-    key = db.make_cache_key("linkedin", "brief text", "", False, 0)
+    key = db.make_cache_key("linkedin", "brief text", "", False, 0, "gemma3:4b", "abc123")
     gid = db.log_generation(platform="linkedin", original_input="brief text",
                             generated_content="HELLO POST", cache_key=key)
     hit = db.generation_by_cache_key(key)
@@ -97,8 +97,16 @@ def test_u2_cache_as_generation():
         nulls = c.execute("SELECT COUNT(*) FROM generations WHERE cache_key IS NULL").fetchone()[0]
     check("NULL cache_key rows coexist", nulls == 2)
     # voice-bump invalidation: a new voice_version → new key → miss
-    key2 = db.make_cache_key("linkedin", "brief text", "", False, 1)
+    key2 = db.make_cache_key("linkedin", "brief text", "", False, 1, "gemma3:4b", "abc123")
     check("voice bump invalidates cache", db.generation_by_cache_key(key2) is None)
+    # A DIFFERENT GENERATOR on the identical brief must miss. This is the whole
+    # point of the key: with an input-only key it HIT, and a second model's request
+    # was served the first model's post under the second model's name — invalidating
+    # any generator A/B run through this endpoint. Same for a changed channel prompt.
+    key_m = db.make_cache_key("linkedin", "brief text", "", False, 0, "gpt-4o-mini", "abc123")
+    check("different generator invalidates cache", db.generation_by_cache_key(key_m) is None)
+    key_p = db.make_cache_key("linkedin", "brief text", "", False, 0, "gemma3:4b", "def456")
+    check("changed prompt version invalidates cache", db.generation_by_cache_key(key_p) is None)
     # unique key enforced
     try:
         db.log_generation(platform="linkedin", original_input="dup",
@@ -244,6 +252,59 @@ def test_u5_hands_on_time():
     check("edit-closed session counted ~90s", abs(r["durations_seconds"][2] - 90) < 2)
 
 
+def test_u6_edit_diff_and_routing():
+    print("U6 edit diff capture + family routing")
+    fresh_db()
+    orig = "Join us Friday. This is a true game-changer for your career."
+    # A VOICE edit: the cliche is cut, no fact touched.
+    g1 = db.log_generation(platform="linkedin", original_input="b", generated_content=orig)
+    db.log_feedback(generation_id=g1, platform="linkedin", verdict="edit",
+                    original_content=orig, final_content="Join us Friday. Seats are limited.",
+                    flag_category="ai_slop", edit_note="cliche")
+    # A GROUNDING edit: only the date changed. The diff says "Friday -> Thursday",
+    # which is exactly the thing the voice loop must never be taught as style.
+    g2 = db.log_generation(platform="linkedin", original_input="b", generated_content=orig)
+    db.log_feedback(generation_id=g2, platform="linkedin", verdict="edit",
+                    original_content=orig,
+                    final_content="Join us Thursday. This is a true game-changer for your career.",
+                    flag_category="wrong_detail")
+
+    with _raw() as c:
+        rows = dict(c.execute(
+            "SELECT flag_category, flag_family FROM feedback_events WHERE verdict='edit'").fetchall())
+    check("chip derives its family", rows["ai_slop"] == "voice" and rows["wrong_detail"] == "grounding")
+
+    with _raw() as c:
+        ops, pct = c.execute(
+            "SELECT edit_ops, pct_changed FROM feedback_events WHERE flag_category='ai_slop'").fetchone()
+    check("diff persisted with a normalized pct", ops is not None and 0 < pct < 100)
+
+    voice = db.voice_edits("linkedin")
+    check("voice edit reaches the voice corpus",
+          len(voice) == 1 and voice[0]["flag_category"] == "ai_slop")
+    # The load-bearing assertion: a date fix must not become a style lesson.
+    check("grounding edit is kept OUT of the voice corpus",
+          all(v["flag_category"] != "wrong_detail" for v in voice))
+
+    ground = db.grounding_defects("linkedin")
+    check("grounding edit reaches the defect list",
+          len(ground) == 1 and ground[0]["flag_category"] == "wrong_detail")
+
+    # An unlabelled edit is excluded rather than assumed safe — it is precisely the
+    # case the guard exists for, and every legacy row is one.
+    g3 = db.log_generation(platform="x", original_input="b", generated_content=orig)
+    db.log_feedback(generation_id=g3, platform="x", verdict="edit",
+                    original_content=orig, final_content="Different text entirely here.")
+    check("unlabelled edit is excluded from the voice corpus", db.voice_edits("x") == [])
+
+    try:
+        db.log_feedback(generation_id=None, platform="x", verdict="edit",
+                        original_content="a", final_content="b", flag_category="not_a_chip")
+        raise AssertionError("unknown chip was accepted")
+    except ValueError:
+        check("unknown chip rejected", True)
+
+
 def main():
     print(f"feedback_db write-path fixture — temp DB at {db.DB_PATH}\n")
     test_u1_provenance_and_migration()
@@ -252,6 +313,7 @@ def main():
     test_u3_backfill_orphans()
     test_u4_reader_repoint_and_versioning()
     test_u5_hands_on_time()
+    test_u6_edit_diff_and_routing()
     print(f"\nALL {CHECKS} CHECKS PASSED")
 
 

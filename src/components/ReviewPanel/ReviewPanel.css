@@ -172,3 +172,18 @@
 @media (prefers-reduced-motion: reduce) {
   .rp-spin { animation: none; border-top-color: var(--color-border); }
 }
+
+/* Edit-reason capture. Two rows, one per family, because the family IS the routing
+   decision: a voice edit feeds the voice loop and a grounding edit must not. The
+   chip selects rather than submits so an optional note can't be lost by clicking. */
+.rp-chip-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 9px; }
+.rp-chip-rowlabel {
+  font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--color-text-tertiary); min-width: 86px;
+}
+.rp-chip-on { outline: 2px solid var(--color-forest); outline-offset: 1px; }
+.rp-note {
+  width: 100%; min-height: 54px; margin: 4px 0 10px; padding: 8px 10px;
+  font: inherit; font-size: 13px; color: var(--color-text-primary);
+  background: #fff; border: 1px solid #e2ddd3; border-radius: 8px; resize: vertical;
+}
