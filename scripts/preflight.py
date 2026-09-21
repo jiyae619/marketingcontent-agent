@@ -25,6 +25,16 @@ import judge        # noqa: E402
 
 MAX_LOCAL_GB = 4.0   # 8GB M3: a 4B (~3.3GB) fits; 7B+ swaps. See CLAUDE.md.
 
+# A model that fits on disk still cannot RUN if no memory is free to hold it:
+# Ollama silently drops to CPU and grinds against swap. Measured on this machine —
+# gemma3:4b under pressure 0.28 tok/s, llama3.2:3b on CPU but fitting 4.4 tok/s,
+# a healthy GPU offload 20+. At the 2.0 floor the 120s timeout in providers.py
+# still allows ~240 output tokens, which covers the shortest channel. Judgement
+# call from three measurements, not a limit tested to failure.
+MIN_TOK_S = 2.0
+CANARY_TOKENS = 5
+CANARY_TIMEOUT_S = 25
+
 fails, warns = [], []
 
 
@@ -55,6 +65,47 @@ def ollama_models():
         return {}
 
 
+def _in_vram(root, model):
+    """True if `model` currently holds weights in VRAM, False if CPU, None if unknown."""
+    try:
+        with urllib.request.urlopen(root + "/api/ps", timeout=5) as r:
+            for m in json.loads(r.read().decode()).get("models") or []:
+                if (m.get("name") or m.get("model")) == model:
+                    return bool(m.get("size_vram"))
+    except Exception:
+        pass
+    return None
+
+
+def canary(model):
+    """Generate a few tokens with `model` and time them -> (tok_s, in_vram, err).
+
+    tok_s comes from Ollama's own eval_count/eval_duration, so model load time is
+    excluded: this is the steady-state speed a real generation will actually get.
+    in_vram is probed on the failure path too — when the canary times out, *where
+    the model landed* is the whole diagnosis, so it must survive the timeout.
+    """
+    base = os.getenv("LOCAL_LLM_BASE_URL") or ""
+    if not base:
+        return None, None, "LOCAL_LLM_BASE_URL not set"
+    root = providers._ollama_root(base)
+    # Measure what a real call will get, which is a call that evicts its rival first.
+    providers._evict_others(base, model)
+    try:
+        req = urllib.request.Request(
+            root + "/api/generate",
+            data=json.dumps({"model": model, "prompt": "hi", "stream": False,
+                             "options": {"num_predict": CANARY_TOKENS}}).encode(),
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=CANARY_TIMEOUT_S) as r:
+            d = json.loads(r.read().decode())
+    except Exception as e:
+        return None, _in_vram(root, model), f"{type(e).__name__}: {e}"
+    n, ns = d.get("eval_count") or 0, d.get("eval_duration") or 0
+    tok_s = n / (ns / 1e9) if ns else None
+    return tok_s, _in_vram(root, model), None
+
+
 print("\nRESOLVED CONFIG  (not .env — what the code actually picks)\n")
 
 # --- billing -----------------------------------------------------------------
@@ -82,6 +133,18 @@ if g_model:
         ok("judge", f"{j_model}  ({j_fn.__name__})")
     except ValueError as e:
         fail("judge", str(e))
+
+# --- is the judge actually WIRED to generation? ------------------------------
+# Resolving a judge says which model would grade; it does not say whether anything
+# asks it to. JUDGE_ON_GENERATE decides that, and a resolved-looking judge next to a
+# disabled dispatch is precisely the "config looks fine, reality differs" shape this
+# script exists to catch.
+live_judge = os.getenv("JUDGE_ON_GENERATE", "true").strip().lower() \
+    not in ("0", "false", "no", "off")
+if live_judge:
+    ok("judge on generate", "on — every generation is graded")
+else:
+    warn("judge on generate", "OFF — nothing grades live; judge is offline-sweep only")
 
 # --- the invariant -----------------------------------------------------------
 if g_model and j_model:
@@ -133,6 +196,30 @@ else:
             fail(f"{name} size", f"{model} is {installed[model]:.1f}GB > {MAX_LOCAL_GB}GB cap")
         else:
             ok(f"{name} size", f"{model}  {installed[model]:.1f}GB")
+
+# --- capacity: can the resolved generator actually RUN, right now? ------------
+# Everything above validates configuration. None of it asks whether there is
+# memory to run that configuration, which is the failure that actually costs
+# sessions: this script printed PREFLIGHT OK sixty seconds before a run that
+# could not possibly finish, because Ollama had 1.2GB free, logged
+# `offloaded 0/35 layers to GPU`, and fell back to CPU. Config is spotless in
+# that state — only a real generation shows it, so do a tiny one.
+# Generator only, deliberately: canarying the judge as well would load both
+# models at once, causing the co-residency providers._evict_others prevents.
+if installed and g_model and g_fn is providers.call_local:
+    tok_s, in_vram, err = canary(g_model)
+    where = "" if in_vram is None else (" on GPU" if in_vram else " on CPU")
+    if err:
+        detail = f"loaded{where}, still no tokens" if in_vram is not None else err
+        fail("generator runs",
+             f"{g_model} produced nothing in {CANARY_TIMEOUT_S}s ({detail}) — free memory, then retry")
+    elif tok_s is None:
+        warn("generator speed", f"{g_model} answered but reported no timing")
+    elif tok_s < MIN_TOK_S:
+        fail("generator speed",
+             f"{tok_s:.2f} tok/s{where}, under the {MIN_TOK_S} floor — free memory, then retry")
+    else:
+        ok("generator speed", f"{g_model}  {tok_s:.1f} tok/s{where}")
 
 # --- owed judge work ---------------------------------------------------------
 # A `pending` row older than one judge run means the thread died mid-call. Before the

@@ -253,6 +253,48 @@ def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001",
         return _empty_result(model, f"Anthropic error: {e}")
 
 
+def _ollama_root(base: str) -> str:
+    """Ollama's native API root, given the OpenAI-compatible base URL."""
+    b = base.rstrip("/")
+    return b[:-3] if b.endswith("/v1") else b
+
+
+def _evict_others(base: str, keep: str) -> None:
+    """Unload every resident local model except `keep`.
+
+    The gate above fixed CONTENTION; it did not fix RESIDENCY. Ollama holds a
+    model's weights for 5 minutes after the call that loaded them, so a
+    generate -> judge handoff leaves gemma3:4b (4.1GB) and llama3.2:3b (2.2GB)
+    resident at the same time on an 8GB machine — measured: six generations and
+    six judgings interleaved inside 90 seconds, well inside one keep_alive
+    window. Ollama then saw available="1.2 GiB", logged `offloaded 0/35 layers
+    to GPU`, and ran the generator on CPU at 0.28 tok/s, which cannot finish a
+    post inside the 120s timeout below. CLAUDE.md already says two models cannot
+    co-reside; until now nothing enforced it.
+
+    Ollama-specific and best-effort by design. call_local is documented to work
+    against LM Studio / llama.cpp / vLLM too, so every failure here is swallowed:
+    a server with no /api/ps just keeps its own residency policy, unchanged.
+    """
+    root = _ollama_root(base)
+    try:
+        with urllib.request.urlopen(root + "/api/ps", timeout=5) as r:
+            loaded = json.loads(r.read().decode()).get("models") or []
+    except Exception:
+        return
+    for m in loaded:
+        name = m.get("name") or m.get("model")
+        if not name or name == keep:
+            continue
+        try:
+            # keep_alive 0 with no prompt is Ollama's unload; it returns
+            # done_reason "unload" without running the model.
+            _post_json(root + "/api/generate", {"model": name, "keep_alive": 0},
+                       headers={}, timeout=20)
+        except Exception:
+            pass
+
+
 def call_local(prompt: str, model: str = None, json_mode: bool = False,
                system: str = None, json_schema: dict = None,
                temperature: float = None) -> dict:
@@ -298,6 +340,7 @@ def call_local(prompt: str, model: str = None, json_mode: bool = False,
         payload["response_format"] = {"type": "json_object"}
     try:
         with _LOCAL_CALL_GATE:
+            _evict_others(base, model)
             data = _post_json(
                 base.rstrip("/") + "/chat/completions",
                 payload,
