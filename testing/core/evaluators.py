@@ -664,12 +664,20 @@ WHATSAPP_WARM_KEYWORDS = [
 class LinkedInEvaluator(ChannelEvaluator):
     platform = "linkedin"
     criteria = [
-        # 800–1,000 chars ideal, matching docs/linkedin.md. The prompt previously
-        # asked for 1,300–1,800 while this scorer zeroed out above 1,400 — the agent
-        # was graded against a target it was never told to hit.
-        # EN 800–1,000 / KR 500–650, straight from docs/linkedin.md §2.
-        Criterion("length", 0.30, char_length_scorer(500, 800, 1000, 1300, 0.30,
-                                                     ko=(300, 500, 650, 900))),
+        # A CEILING, not a target — matching docs/linkedin.md §2.
+        #
+        # The previous band zeroed anything under 500 chars (EN), which meant a post
+        # that was short because the BRIEF was thin lost 30% of its total score. The
+        # prompt said "if the input is thin, tighten rather than pad" and the scorer
+        # overruled it: padding was the rational response to the grading, and the
+        # padding is invented content. Measured on a 140-char brief, llama3.2:3b
+        # landed IN BAND at 529 chars by inventing "20년 experience in industry".
+        #
+        # So the band is deliberately asymmetric: forgiving downward, firm on the cap.
+        # Nothing shippable is zeroed for being faithful, and length stops paying.
+        # EN 350–800 ideal / KR 220–500, both open well below.
+        Criterion("length", 0.30, char_length_scorer(120, 350, 800, 1300, 0.30,
+                                                     ko=(80, 220, 500, 900))),
         Criterion("hashtags", 0.15, hashtag_count_scorer(3, 5, 0.15, zero_above=10)),
         Criterion("format", 0.20, format_quality_scorer(0.20, min_paragraphs=3)),
         Criterion("tone", 0.20, tone_keywords_scorer("professional", LINKEDIN_PRO_KEYWORDS, 2, 5, 0.20)),
