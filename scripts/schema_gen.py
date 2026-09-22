@@ -51,10 +51,10 @@ CHANNELS = {
     "x":         dict(body=1, bullets=False, tags=(2, 3), sentences=None, cap=280),
 }
 
-LABELS_KO = {"date": "일시", "time": "시간", "location": "장소",
-             "person": "연사", "price": "참가비", "topics": "주제"}
-LABELS_EN = {"date": "Date", "time": "Time", "location": "Location",
-             "person": "Speaker", "price": "Price", "topics": "Topics"}
+LABELS_KO = {"date": "일시", "time": "시간", "location": "장소", "map_url": "지도",
+             "person": "연사", "price": "참가비", "topics": "주제", "link": "링크"}
+LABELS_EN = {"date": "Date", "time": "Time", "location": "Location", "map_url": "Map",
+             "person": "Speaker", "price": "Price", "topics": "Topics", "link": "Link"}
 LABELS_KO["event_type"] = "행사"
 LABELS_EN["event_type"] = "Event"
 # A standalone label line ending in a colon — what has_headers() actually accepts.
@@ -203,10 +203,12 @@ def fact_lines(facts, ko, spec):
         seen.append(ev)
         out.append(f"• {L['event_type']}: {ev}" if spec["bullets"]
                    else f"{L['event_type']}: {ev}")
-    for k in ("date", "time", "location", "person", "price"):
+    for k in ("date", "time", "location", "person", "price", "link"):
         v = facts.get(k)
         v = v.strip() if isinstance(v, str) else None
-        if not v or any(v in e or e in v for e in seen):
+        if not v:
+            continue
+        if k != "link" and any(v in e or e in v for e in seen):
             continue
         seen.append(v)
         out.append(f"• {L[k]}: {v}" if spec["bullets"] else f"{L[k]}: {v}")
@@ -230,12 +232,19 @@ def assemble(platform, facts, prose):
     ko = is_korean(hook + " ".join(body))
     facts_block = fact_lines(facts, ko, spec)
 
+    L = LABELS_KO if ko else LABELS_EN
+    map_url = (facts.get("map_url") or "").strip()
+    map_line = f"{L['map_url']}: {map_url}" if map_url else None
     if spec["bullets"]:
         head = ([HEADER_KO if ko else HEADER_EN] if spec.get("header") else [])
-        parts = [hook, ""] + body[:spec["body"]] + [""] + head + facts_block + ["", cta]
+        block = facts_block + ([f"• {map_line}"] if map_line else [])
+        parts = [hook, ""] + body[:spec["body"]] + [""] + head + block + ["", cta]
     else:
-        # Chat channels: one compact line of facts, no poster layout.
-        parts = [hook] + body[:spec["body"]] + [" · ".join(facts_block), cta]
+        # Chat channels: one compact line of facts, no poster layout. The map goes
+        # on its own line after the cta — a link is tapped, not read inline — and
+        # is dropped entirely where a character cap has to pay for it.
+        tail = [map_line] if (map_line and not spec.get("cap")) else []
+        parts = [hook] + body[:spec["body"]] + [" · ".join(facts_block), cta] + tail
     lo, hi = spec["tags"]
     if hi:
         tags = [t.lstrip("#").strip().replace(" ", "") for t in (prose.get("hashtags") or []) if t.strip()][:hi]

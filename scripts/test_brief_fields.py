@@ -79,6 +79,53 @@ def main():
     noon, _ = bf.validate({**OK, "time": "12:00"}, ko=True)
     check("noon is 오후 12시", noon["time"] == "오후 12시 PST", noon["time"])
 
+    # --- price: three states, not two -------------------------------------
+    # The original prototype failure was hyperclovax extracting price="10000"
+    # from a brief that stated no price, which rendered "• Price: 10000".
+    # Collapsing "free" into "not stated" is what makes that recoverable, so
+    # they are kept distinct and only "unset" emits nothing.
+    unset, _ = bf.validate({**OK})
+    free, _ = bf.validate({**OK, "price_kind": "free"})
+    free_ko, _ = bf.validate({**OK, "price_kind": "free"}, ko=True)
+    check("no price stated emits no line", unset["price"] is None, unset["price"])
+    check("free is a stated fact, not an absence",
+          free["price"] == "Free" and free_ko["price"] == "무료", (free, free_ko))
+
+    paid = {**OK, "price_kind": "paid", "price": "10,000", "currency": "KRW"}
+    p_en, _ = bf.validate(paid)
+    p_ko, _ = bf.validate(paid, ko=True)
+    check("paid renders per locale",
+          p_en["price"] == "\u20a910,000" and p_ko["price"] == "10,000\uc6d0", (p_en, p_ko))
+
+    # Either half alone is an ambiguity the per-field checks cannot see: "paid"
+    # with no amount renders nothing and reads as free.
+    check("paid with no amount is rejected",
+          bf.validate({**OK, "price_kind": "paid"})[1].get("price"))
+    check("amount with no kind is rejected",
+          bf.validate({**OK, "price": 5000})[1].get("price_kind"))
+    check("negative amount is rejected",
+          bf.validate({**OK, "price_kind": "paid", "price": -5})[1].get("price"))
+
+    # --- map url ----------------------------------------------------------
+    # Built by code from the venue. No model is asked for a link, which is the
+    # failure mode behind every "[링크]" this project has had to strip.
+    m, _ = bf.validate(OK)
+    check("map url is derived from the venue",
+          m["map_url"] == "https://www.google.com/maps/search/?api=1&query="
+                          "Seattle+University", m["map_url"])
+    check("same venue always yields the same url",
+          bf.validate(OK)[0]["map_url"] == m["map_url"])
+    # Suggested, not forced — a verified place link must win over a search guess.
+    over, _ = bf.validate({**OK, "map_url": "https://maps.app.goo.gl/abc"})
+    check("a submitted map url wins",
+          over["map_url"] == "https://maps.app.goo.gl/abc", over["map_url"])
+    check("a bad map url is rejected",
+          bf.validate({**OK, "map_url": "maps.google.com"})[1].get("map_url"))
+    # A venue is required, so there is always a venue to derive from; but a
+    # blank one must not produce a URL that searches for nothing.
+    check("no venue means no map url",
+          bf.validate({"event_type": "x", "date": "2026-09-14"})[0]["map_url"] is None)
+
     print(f"\n{'FAILED: ' + '; '.join(FAILED) if FAILED else 'all passed'}")
     return 1 if FAILED else 0
 

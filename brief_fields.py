@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import re
+import urllib.parse as _url
 
 # Time zones we render; abbreviation is published verbatim, never converted.
 TIMEZONES = ("PST", "PDT", "EST", "EDT", "KST", "UTC", "GMT", "CET", "JST")
@@ -32,7 +33,12 @@ FIELDS = (
     ("time",       "time",  False, "Time",       "시간"),
     ("timezone",   "tz",    False, "Time zone",  "시간대"),
     ("location",   "text",  True,  "Location",   "장소"),
-    ("price",      "money", False, "Price",      "참가비"),
+    # Derived from `location` unless the form supplies one. Suggested rather than
+    # forced: a search URL is a good guess, not a verified place.
+    ("map_url",    "url",   False, "Map",        "지도"),
+    ("price_kind", "enum",  False, "Price",      "참가비"),
+    ("price",      "money", False, "Amount",     "금액"),
+    ("currency",   "enum",  False, "Currency",   "통화"),
     ("link",       "url",   False, "Link",       "링크"),
     ("topics",     "list",  False, "Agenda",     "주제"),
 )
@@ -42,6 +48,39 @@ _URL_RE = re.compile(r"^https?://\S+$", re.I)
 _TIME_RE = re.compile(r"^(?P<h>\d{1,2}):(?P<m>\d{2})$")
 
 _MONTHS_KO = "1월 2월 3월 4월 5월 6월 7월 8월 9월 10월 11월 12월".split()
+
+# Three states, not two. "free" and "not stated" are different facts, and
+# collapsing them is how a brief with no price shipped "• Price: 10000" — the
+# model filled a field it should have left empty. `unset` emits no line at all.
+PRICE_KINDS = ("unset", "free", "paid")
+CURRENCIES = {"KRW": ("₩", "원"), "USD": ("$", "달러"), "EUR": ("€", "유로"),
+              "JPY": ("¥", "엔")}
+
+
+def map_url_for(location):
+    """A Google Maps search link, built by code from the venue string.
+
+    Deterministic: the same venue always yields the same URL, and no model is
+    asked to produce a link — which is the failure mode behind every "[링크]"
+    this project has had to strip.
+    """
+    loc = (location or "").strip()
+    if not loc:
+        return None
+    return ("https://www.google.com/maps/search/?api=1&query="
+            + _url.quote_plus(loc))
+
+
+def render_price(kind, amount, currency, ko):
+    """None means emit no line. That is what "if a detail is missing, OMIT it"
+    looks like in code."""
+    if kind == "free":
+        return "무료" if ko else "Free"
+    if kind != "paid" or amount is None:
+        return None
+    sym, word = CURRENCIES.get(currency or "KRW", ("", ""))
+    n = f"{amount:,.0f}" if float(amount).is_integer() else f"{amount:,.2f}"
+    return f"{n}{word}" if ko else f"{sym}{n}"
 
 
 class FieldError(ValueError):
@@ -115,8 +154,23 @@ def validate(payload, ko=False):
                 facts[name] = raw.upper()
             elif kind == "url":
                 if not _URL_RE.match(raw):
-                    raise FieldError("link must start with http:// or https://")
+                    raise FieldError(f"{name} must start with http:// or https://")
                 facts[name] = raw
+            elif kind == "money":
+                try:
+                    facts[name] = float(str(raw).replace(",", "").lstrip("₩$€¥"))
+                except ValueError:
+                    raise FieldError(f"amount must be a number, got {raw!r}")
+                if facts[name] < 0:
+                    raise FieldError("amount cannot be negative")
+            elif name == "price_kind":
+                if raw.lower() not in PRICE_KINDS:
+                    raise FieldError(f"price must be one of {', '.join(PRICE_KINDS)}")
+                facts[name] = raw.lower()
+            elif name == "currency":
+                if raw.upper() not in CURRENCIES:
+                    raise FieldError(f"currency must be one of {', '.join(CURRENCIES)}")
+                facts[name] = raw.upper()
             else:
                 facts[name] = raw
         except FieldError as e:
@@ -127,10 +181,23 @@ def validate(payload, ko=False):
     if facts.get("time") and not facts.get("timezone"):
         errors.setdefault("timezone", "required when a time is given")
 
+    # "paid" with no amount would render nothing and silently look like a free
+    # event; an amount with no kind is the same ambiguity from the other side.
+    kind = facts.get("price_kind") or "unset"
+    if kind == "paid" and facts.get("price") is None:
+        errors.setdefault("price", "required when the event is paid")
+    if facts.get("price") is not None and kind != "paid":
+        errors.setdefault("price_kind", "set to 'paid' when an amount is given")
+
     out = dict(facts)
     if isinstance(facts.get("date"), _dt.date):
         out["date"] = render_date(facts["date"], ko)
     if isinstance(facts.get("time"), _dt.time):
         out["time"] = render_time(facts["time"], facts.get("timezone"), ko)
-    out.pop("timezone", None)
+    out["price"] = render_price(kind, facts.get("price"), facts.get("currency"), ko)
+    # Suggested, not forced: a submitted map_url always wins.
+    if not out.get("map_url"):
+        out["map_url"] = map_url_for(facts.get("location"))
+    for k in ("timezone", "price_kind", "currency"):
+        out.pop(k, None)
     return out, errors

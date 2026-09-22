@@ -54,7 +54,16 @@ def count_words(content: str) -> int:
 
 
 def count_sentences(content: str) -> int:
-    return len([s for s in SENTENCE_SPLIT_RE.split(content) if s.strip()])
+    """Sentences, not dots. A URL is one token however many periods it contains.
+
+    "https://www.google.com/maps/search/?api=1" counted as FOUR sentences, so a
+    two-sentence KakaoTalk message carrying a link scored as six and failed a
+    cap of three. Any post with a link hit this; it surfaced when code started
+    emitting a map URL. Decimals are excluded for the same reason — "10.5" is
+    not a sentence boundary."""
+    stripped = URL_RE.sub("\u2022", content)
+    stripped = re.sub(r"(?<=\d)\.(?=\d)", "", stripped)
+    return len([s for s in SENTENCE_SPLIT_RE.split(stripped) if s.strip()])
 
 
 def count_hashtags(content: str) -> int:
