@@ -32,6 +32,7 @@ sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, "testing/core"))
 from dotenv import load_dotenv  # noqa: E402
 load_dotenv(os.path.join(HERE, ".env"))
 import providers  # noqa: E402
+import brief_fields  # noqa: E402
 from evaluators import (evaluate as run_eval, strip_markdown,  # noqa: E402
                         strip_ungrounded, is_korean)
 from prototype_schema_gen import (BRIEF, FACTS_SCHEMA, EXTRACT_SYS,  # noqa: E402
@@ -281,7 +282,29 @@ def flag_prose_contradictions(text, facts, brief):
     return out
 
 
-def generate(platform, brief, model_id):
+def facts_from_fields(payload, ko):
+    """The form path: typed fields in, rendered facts out, no model and no regex.
+
+    strip_ungrounded() tests each term against the brief, so with no free text to
+    test against, the grounded set IS the submitted fields — joined here into the
+    string the guard checks. A weekday still cannot survive it, because no field
+    produces one.
+    """
+    facts, errors = brief_fields.validate(payload, ko=ko)
+    if errors:
+        return None, None, errors
+    facts = canonicalize(facts)
+    grounded = "\n".join(str(v) for v in facts.values() if v and not isinstance(v, list))
+    grounded += "\n" + "\n".join(facts.get("topics") or [])
+    return facts, grounded, {}
+
+
+def generate(platform, brief, model_id, fields=None):
+    if fields is not None:
+        facts, brief, errors = facts_from_fields(fields, ko=bool(fields.get("ko")))
+        if errors:
+            return None, None, None, f"field errors: {errors}"
+        return _finish(platform, facts, brief, model_id)
     facts = canonicalize(parse_brief(brief))
     missing = [k for k, v in facts.items()
                if k not in ("topics", "event_type") and not v]
@@ -293,6 +316,10 @@ def generate(platform, brief, model_id):
                 if mf.get(k):
                     facts[k] = mf[k]
     facts, _ = ground_facts(facts, brief)
+    return _finish(platform, facts, brief, model_id)
+
+
+def _finish(platform, facts, brief, model_id):
     spec = CHANNELS[platform]
     # The prose is shown ONLY what it needs to write around: who, what kind of
     # thing, and the topics. Date, time, location, price and link are withheld
@@ -321,10 +348,12 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--model", default=os.getenv("LOCAL_LLM_MODEL", "hyperclovax:1.5b"))
     ap.add_argument("--brief", default=BRIEF)
+    ap.add_argument("--fields", default=None, help="path to a JSON file of typed fields")
     a = ap.parse_args()
+    fields = json.load(open(a.fields)) if a.fields else None
     plats = list(CHANNELS) if a.all else [a.platform or "linkedin"]
     for p in plats:
-        text, facts, flags, err = generate(p, a.brief, a.model)
+        text, facts, flags, err = generate(p, a.brief, a.model, fields=fields)
         print(f"\n{'='*70}\n  {p.upper()}  ·  {a.model}\n{'='*70}")
         if err:
             print(f"  FAILED: {err}"); continue
