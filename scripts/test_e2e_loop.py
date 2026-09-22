@@ -252,6 +252,40 @@ def test_voice_gate():
           after[0]["style_text"].startswith("OLD"))
 
 
+def test_e6_grounding_guard():
+    print("E6 grounding guard — delete what is safe, flag what is not")
+    from evaluators import strip_ungrounded
+    brief = next(c["brief"] for c in CASES["cases"])
+
+    # Every one of these was produced by a real model in the seven-model sweep.
+    for src, want in [
+        ("Sep 14th, 2026 (Saturday), 3PM PST", "Sep 14th, 2026, 3PM PST"),
+        ("9월 14일(토) 오후 3시 PST", "9월 14일 오후 3시 PST"),
+        ("박운영 세션, 화요일 오후 3시", "박운영 세션, 오후 3시"),
+        ("Join us on Monday at 3PM.", "Join us at 3PM."),
+    ]:
+        got, _ = strip_ungrounded(src, brief)
+        check(f"ungrounded weekday removed: {src[:26]}", got == want, f"got {got!r}")
+
+    # The guard must not delete a weekday the brief actually states.
+    for b_extra, src in [("\nday: Monday", "Join us on Monday at 3PM."),
+                         ("\n요일: 금요일", "9월 14일(금) 오후 3시")]:
+        got, _ = strip_ungrounded(src, brief + b_extra)
+        check(f"grounded weekday survives: {src[:22]}", got == src, f"got {got!r}")
+
+    got, flags = strip_ungrounded("참여 신청은 [링크] 에서 하세요.", brief)
+    check("placeholder stripped AND flagged",
+          "[링크]" not in got and any(k == "placeholder" for k, _ in flags))
+
+    # A restyle noun is flagged, never cut: removing it breaks the sentence.
+    src = "세미나 주제는 커리어 레쥬메입니다."
+    got, flags = strip_ungrounded(src, brief)
+    check("restyle flagged, not deleted",
+          got == src and ("restyle", "세미나") in flags, f"got {got!r} {flags}")
+
+    check("empty input is a no-op", strip_ungrounded("", brief) == ("", []))
+
+
 def main():
     print(f"e2e loop fixture — {len(CASES['cases'])} golden cases, temp DB, no model calls\n")
     test_cases()
@@ -259,6 +293,7 @@ def main():
     test_synthesis_prompt()
     test_profile_gate()
     test_voice_gate()
+    test_e6_grounding_guard()
     print(f"\nALL {CHECKS} CHECKS PASSED")
 
 

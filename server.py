@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'testing/core'))
 
 import feedback_db
-from evaluators import evaluate as run_eval, strip_markdown
+from evaluators import evaluate as run_eval, strip_markdown, strip_ungrounded
 import providers
 import judge
 import generators
@@ -661,6 +661,8 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 # markdown this pipeline now removes anyway.
                 if result.get('ok') and result.get('text'):
                     result['text'] = strip_markdown(result['text'])
+                    result['text'], result['grounding_flags'] = strip_ungrounded(
+                        result['text'], user_message)
                 return key, result
 
             results = {}
@@ -775,7 +777,21 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                         # means the heuristic, the judge and the human grade the same
                         # bytes the user will actually publish.
                         text = strip_markdown(gen['text'])
-                        result = {'content': [{'text': text}], 'generator_model': gen_model}
+                        # Then the grounding guard. Seven local models, six channels,
+                        # one brief: every one invented a weekday or restyled the
+                        # event, and both rules are stated explicitly — in Korean and
+                        # English — in every channel prompt. Korean-native models broke
+                        # them as readily as the English-first ones, so this is neither
+                        # a model-choice nor a prompt-wording problem, and code answers
+                        # it (CLAUDE.md rule 5). Weekdays and placeholders absent from
+                        # the brief are deleted; restyle nouns are only flagged, since
+                        # cutting 세미나 out of a sentence leaves broken Korean.
+                        text, ground_flags = strip_ungrounded(text, user_message)
+                        if ground_flags:
+                            print(f"[ground] {platform} " +
+                                  ", ".join(f"{k}:{v}" for k, v in ground_flags))
+                        result = {'content': [{'text': text}], 'generator_model': gen_model,
+                                  'grounding_flags': ground_flags}
 
                         # Eval + persist + cache
                         if platform in VALID_PLATFORMS:

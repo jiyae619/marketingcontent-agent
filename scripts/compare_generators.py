@@ -36,7 +36,7 @@ load_dotenv(os.path.join(HERE, ".env"))
 import feedback_db      # noqa: E402
 import generators       # noqa: E402
 import providers        # noqa: E402
-from evaluators import evaluate as run_eval, strip_markdown  # noqa: E402
+from evaluators import evaluate as run_eval, strip_markdown, strip_ungrounded  # noqa: E402
 
 DEFAULT_OUT = os.path.expanduser(
     "~/dev/documents/html-previews/marketing-agent-generator-compare.html")
@@ -82,11 +82,13 @@ def run_one(spec, platform, brief, temperature=0.0):
         res = fn(full, model=model_id, temperature=temperature)
     except Exception as e:
         res = {"ok": False, "error": str(e), "cost_usd": 0.0}
-    # Mirror server.py: strip on the generation path so the comparison scores what
-    # would actually ship, not the raw model output.
+    # Mirror server.py exactly — markdown, then the grounding guard — so the
+    # comparison scores what would actually ship, not the raw model output. Computed
+    # once: strip_ungrounded returns the text and its flags together.
+    text, ground_flags = strip_ungrounded(strip_markdown(res.get("text") or ""), brief)
     out = {"spec": spec, "label": label, "model": model_id, "platform": platform,
            "wall_s": round(time.time() - t0, 1), "ok": bool(res.get("ok")),
-           "text": strip_markdown(res.get("text") or ""),
+           "text": text, "ground_flags": ground_flags,
            "error": res.get("error"),
            "cost_usd": res.get("cost_usd") or 0.0}
     if out["ok"] and out["text"]:

@@ -104,6 +104,96 @@ def strip_markdown(content: str) -> str:
     return re.sub(r"^#{1,6}\s+", "", s, flags=re.M)  # ATX headings
 
 
+# --- grounding guard -------------------------------------------------------
+# Seven models, six channels, one brief. Every one of them either invented a
+# weekday or restyled the event, and both rules are written explicitly — in
+# Korean and English — in all six channel prompts. Observed: (일) (수) (목)
+# 화요일 수요일 for a date that is a MONDAY, and 세미나 / 워크숍 / 워크샵 / 특강
+# for a coaching session. Korean-native models (exaone, hyperclovax, kanana) broke
+# them as readily as the English-first ones, so this is not a model-choice problem
+# and not a prompt-wording problem. It is CLAUDE.md rule 5 again: if code can
+# answer, code answers.
+#
+# The split below is the load-bearing part. A weekday or a placeholder can be
+# DELETED without touching the sentence around it. A restyle noun cannot — cutting
+# 세미나 out of "세미나 주제는 ..." leaves broken Korean — so it is FLAGGED for the
+# reviewer instead. Rewriting it would mean guessing the author's intent, which is
+# the thing this whole guard exists to stop a model doing.
+
+_DAY_NAMES = (r"monday|tuesday|wednesday|thursday|friday|saturday|sunday"
+              r"|mon|tues|tue|weds|wed|thurs|thur|thu|fri|sat|sun")
+# Full names before abbreviations: `sat` would otherwise match inside "saturday"
+# and leave "urday)" behind, which is how an empty "()" got shipped.
+# Each pattern captures the DAY TOKEN itself in group "day". The groundedness test
+# reads that group, not the whole match: _WEEKDAY_EN swallows a leading "on ", and
+# comparing " on Monday" against a brief that says "a Monday" wrongly deleted it.
+_WEEKDAY_PAREN = re.compile(r"\s*[（(]\s*(?P<day>[월화수목금토일]|(?i:" + _DAY_NAMES + r"))\s*[)）]")
+_WEEKDAY_KO    = re.compile(r"\s*(?P<day>[월화수목금토일]요일)")
+_WEEKDAY_EN    = re.compile(r"(?i:\s*\bon\s+)?(?P<day>(?i:\b(?:" + _DAY_NAMES + r")\b))")
+_PLACEHOLDER   = re.compile(r"\s*[\[［]\s*[^\]］]*?"
+                            r"(?:링크|주소|날짜|장소|시간|가격|Link|link|URL|url|Insert|insert|form)"
+                            r"[^\]］]*?\s*[\]］]")
+
+# Restyle nouns, both scripts. Flagged, never deleted.
+_RESTYLE = ("세미나", "워크샵", "워크숍", "마스터클래스", "특강", "강연", "컨퍼런스",
+            "seminar", "workshop", "masterclass", "conference", "lecture")
+
+
+def _tidy(s: str) -> str:
+    """Close the gaps a deletion leaves, without touching intentional whitespace.
+
+    Empty brackets go FIRST: a deletion inside them can leave "( )", and collapsing
+    the space before a comma before removing that produces "2026 , 3PM".
+    """
+    s = re.sub(r"[（(]\s*[)）]", "", s)
+    s = re.sub(r"[ \t]{2,}", " ", s)
+    s = re.sub(r"[ \t]+([,.!?、。])", r"\1", s)
+    return re.sub(r"[ \t]+$", "", s, flags=re.M)
+
+
+def strip_ungrounded(content: str, brief: str):
+    """Delete ungrounded weekdays and placeholders; flag what a human must resolve.
+
+    Returns (cleaned_text, flags), flags being a list of (kind, term).
+
+    A term is ungrounded only when it is ABSENT from the brief: if the brief says
+    Friday, the post may say Friday. That check is what stops this deleting correct
+    information, and it is why the brief has to be passed in.
+
+    Placeholders are both stripped AND flagged. Stripped because "[링크]" must never
+    publish; flagged because removing it can leave a sentence with a hole in it —
+    "참여 신청은 [링크] 에서 하세요" becomes "참여 신청은 에서 하세요", which is not
+    Korean. The text is safe to ship only after a human looks.
+
+    Restyle nouns are flagged and NEVER deleted. Cutting 세미나 out of "세미나 주제는"
+    leaves broken grammar, and choosing a replacement means guessing the author's
+    intent — the exact thing this guard exists to stop a model doing.
+    """
+    if not content:
+        return content, []
+    b, out, flags = brief or "", content, []
+
+    bl = b.lower()
+
+    def drop(rx, text):
+        # Keep the match when the DAY ITSELF appears in the brief; a brief that
+        # states a weekday may have it repeated in the post.
+        return rx.sub(lambda m: m.group(0) if m.group("day").lower() in bl else "", text)
+
+    out = drop(_WEEKDAY_PAREN, out)
+    out = drop(_WEEKDAY_KO, out)
+    out = drop(_WEEKDAY_EN, out)
+
+    if _PLACEHOLDER.search(out):
+        flags += [("placeholder", m.group(0).strip()) for m in _PLACEHOLDER.finditer(out)]
+        out = _PLACEHOLDER.sub("", out)
+
+    out = _tidy(out)
+    flags += [("restyle", w) for w in _RESTYLE
+              if w.lower() in out.lower() and w.lower() not in b.lower()]
+    return out, flags
+
+
 HANGUL_RE = re.compile(r"[가-힣]")
 
 
