@@ -382,9 +382,21 @@ def check_eval_quality():
     """
     golden = os.path.join(REPO, "testing/golden/golden_set_v1.json")
     if not os.path.exists(golden):
-        return _finding("eval.gate_metrics", True, "low",
-                        "no golden set present — skipped (rebuild: scripts/golden_set.py)",
-                        "", "python3 scripts/golden_set.py", fixable=False)
+        # This used to pass here — "skipped" — which is a vacuous green on every
+        # PR: testing/golden/*.json is gitignored, so a fresh clone (including
+        # every CI run) never has it, and CI has no model access to generate it
+        # (LOCAL_ONLY, no Ollama reachable). The one detector guarding CLAUDE.md
+        # rule 5 — prompts and scorers are one decision in two files — was
+        # therefore never actually checking anything on a pull request. A missing
+        # input is a reason to say so loudly, not a reason to look clean.
+        return _finding("eval.gate_metrics", False, "medium",
+                        "golden set missing — this check cannot run, and has been "
+                        "silently skipped on every PR until now",
+                        "testing/golden/golden_set_v1.json is gitignored, so no CI "
+                        "checkout has it and CI cannot generate one (no model "
+                        "access). Generate it locally and commit it, or this "
+                        "detector can never do its job in CI.",
+                        "python3 scripts/golden_set.py")
     rc, out = _run([sys.executable, "scripts/tune_threshold.py"], timeout=300)
     if rc != 0:
         return _finding("eval.gate_metrics", False, "medium",
@@ -403,11 +415,23 @@ def check_eval_quality():
         except Exception:
             prior = {}
     if not prior:
-        # First run records the baseline rather than inventing a verdict about it.
+        # baseline.json is ALSO gitignored. Auto-recording here used to pass
+        # silently, which in CI means: no baseline in the checkout, this branch
+        # writes one to a workspace that is thrown away when the job ends, and the
+        # very next run repeats the exact same "first run" with nothing ever
+        # compared. Locally that self-heals in one command; in CI it is a green
+        # check that has never once verified a number.
         _save_baseline_key("eval.gate_metrics", now)
-        return _finding("eval.gate_metrics", True, "low",
-                        f"baseline recorded ({len(now)} metrics) — drift checked from now on",
-                        json.dumps(now, indent=2), "python3 scripts/tune_threshold.py")
+        return _finding("eval.gate_metrics", False, "medium",
+                        "no baseline present — cannot check for drift",
+                        f"tools/bughunt/baseline.json is gitignored, so this "
+                        f"checkout had none. One was written locally just now "
+                        f"({len(now)} metrics) but a CI runner discards its "
+                        f"workspace, so the same thing happens on every future "
+                        f"run there. Commit tools/bughunt/baseline.json, or this "
+                        f"check can never compare anything in CI.\n"
+                        + json.dumps(now, indent=2),
+                        "python3 scripts/tune_threshold.py")
 
     drift = [f"{k}: {prior.get(k)} -> {now[k]}" for k in now
              if k in prior and prior[k] != now[k]]

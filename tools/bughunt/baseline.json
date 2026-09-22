@@ -1,0 +1,10 @@
+{
+  "eval.gate_metrics": {
+    "defective": 17,
+    "overlap": 16,
+    "recall.ai_slop": "2/4",
+    "recall.hallucination": "1/4",
+    "recall.irrelevant": "2/5",
+    "recall.kr_en_register": "2/4"
+  }
+}

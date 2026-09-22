@@ -49,5 +49,7 @@ testing/results/feedback.db
 testing/results/feedback.db-journal
 testing/results/*.bak
 
-# Golden set (embeds generated content + briefs — rebuildable via scripts/golden_set.py)
-testing/golden/*.json
+# Golden set and its drift baseline are COMMITTED, not ignored: eval.gate_metrics
+# (tools/bughunt/detectors.py) needs both to run in CI, which has no live model
+# access to regenerate them. See tools/bughunt/detectors.py check_eval_quality().
+# Rebuild locally with scripts/golden_set.py if the set needs to change.
