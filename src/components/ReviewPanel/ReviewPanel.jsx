@@ -28,14 +28,14 @@ export function ReviewPanel({ platform, content, generationId, onStatus }) {
   const [picked, setPicked] = useState([]);
   const [note, setNote] = useState('');
   const [verdict, setVerdict] = useState(null);
+  // A new generation is a new review, so this whole panel is remounted by
+  // App.jsx (key={generationId}) rather than reset in an effect. An effect whose
+  // only job is setState causes a cascading render — the react-hooks rule that
+  // failed CI — and remounting is the pattern React documents for it.
 
   useEffect(() => {
     fetch('/api/flags').then((r) => r.json()).then((d) => setFlags(d.taxonomy || [])).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    setVerdict(null); setReview(null); setPicked([]); setNote('');
-  }, [generationId]);
 
   const toggle = (category) =>
     setPicked((prev) => (prev.includes(category)

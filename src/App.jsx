@@ -331,6 +331,7 @@ function App() {
                   />
                   {generationIds[platform] && (
                     <ReviewPanel
+                      key={generationIds[platform]}
                       platform={platform}
                       content={generatedContent[platform] || ''}
                       generationId={generationIds[platform]}
