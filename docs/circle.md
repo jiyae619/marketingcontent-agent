@@ -30,7 +30,7 @@ CIRCLE is a community platform where content is mainly for event notification to
    - Hook the reader
 
 3. **Body** (Main content)
-   - Use section headers (##)
+   - Use section headers: a short plain-text label on its own line ending in a colon (e.g. `행사 안내:` / `Event details:`). Never `##`.
    - Event information: discussion topics, time and location, (if any) special events, speaker
    - Bullet points for scannability
 

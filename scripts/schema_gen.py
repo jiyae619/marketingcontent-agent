@@ -43,7 +43,8 @@ from prototype_schema_gen import (BRIEF, FACTS_SCHEMA, EXTRACT_SYS,  # noqa: E40
 CHANNELS = {
     "linkedin":  dict(body=3, bullets=True,  tags=(3, 5), sentences=None),
     "instagram": dict(body=2, bullets=True,  tags=(3, 5), sentences=None),
-    "circle":    dict(body=3, bullets=True,  tags=(0, 0), sentences=None),
+    "circle":    dict(body=4, bullets=True,  tags=(0, 0), sentences=None,
+                      para=200, header=True),
     "kakaotalk": dict(body=1, bullets=False, tags=(0, 0), sentences=3),
     "whatsapp":  dict(body=1, bullets=False, tags=(0, 0), sentences=4),
     "x":         dict(body=1, bullets=False, tags=(2, 3), sentences=None, cap=280),
@@ -55,6 +56,9 @@ LABELS_EN = {"date": "Date", "time": "Time", "location": "Location",
              "person": "Speaker", "price": "Price", "topics": "Topics"}
 LABELS_KO["event_type"] = "행사"
 LABELS_EN["event_type"] = "Event"
+# A standalone label line ending in a colon — what has_headers() actually accepts.
+# docs/circle.md line 33 used to say "##" here, which strip_markdown() then deleted.
+HEADER_KO, HEADER_EN = "행사 안내:", "Event details:"
 
 # --- event type as an enum -------------------------------------------------
 # `restyle` (a briefed "coaching session" shipping as 세미나 / 워크샵 / 마스터클래스)
@@ -158,8 +162,10 @@ def prose_system(platform, spec):
          "You are NOT given the date, time, location or price, and a details "
          "block carrying them is appended after your text. Never state or guess "
          "them, and never name a venue.",
-         f"hook: one complete sentence. body: {spec['body']} short paragraph(s). "
-         "cta: one sentence inviting the reader to register or reply."]
+         f"hook: one complete sentence. body: {spec['body']} "
+         + (f"paragraph(s) of about {spec['para']} characters each. "
+            if spec.get("para") else "short paragraph(s). ")
+         + "cta: one sentence inviting the reader to register or reply."]
     lo, hi = spec["tags"]
     s.append(f"hashtags: {hi} tags, no '#'." if hi else "hashtags: return an empty list.")
     if spec.get("sentences"):
@@ -169,6 +175,21 @@ def prose_system(platform, spec):
     s.append("Write in the SAME language as the facts. Keep names, venues and "
              "time-zone codes exactly as given. Plain text only.")
     return "\n".join(s)
+
+
+def prose_schema(spec):
+    """Per-channel PROSE_SCHEMA with the body length bound in the schema itself.
+
+    Only the CAPS are bound. minItems=4 on body was measured forcing
+    hyperclovax:1.5b into filler entries ("click: [") rather than more prose —
+    constrained decoding makes a shape reachable, not a capability appear.
+    """
+    sc = json.loads(json.dumps(PROSE_SCHEMA))
+    n = spec["body"]
+    sc["properties"]["body"].update(maxItems=n)
+    lo, hi = spec["tags"]
+    sc["properties"]["hashtags"].update(minItems=lo, maxItems=hi)
+    return sc
 
 
 def fact_lines(facts, ko, spec):
@@ -209,7 +230,8 @@ def assemble(platform, facts, prose):
     facts_block = fact_lines(facts, ko, spec)
 
     if spec["bullets"]:
-        parts = [hook, ""] + body[:spec["body"]] + [""] + facts_block + ["", cta]
+        head = ([HEADER_KO if ko else HEADER_EN] if spec.get("header") else [])
+        parts = [hook, ""] + body[:spec["body"]] + [""] + head + facts_block + ["", cta]
     else:
         # Chat channels: one compact line of facts, no poster layout.
         parts = [hook] + body[:spec["body"]] + [" · ".join(facts_block), cta]
@@ -282,7 +304,8 @@ def generate(platform, brief, model_id):
                "person": facts.get("person"),
                "topics": facts.get("topics") or []}
     prose, err = call(model_id, prose_system(platform, spec),
-                      "Facts:\n" + json.dumps(payload, ensure_ascii=False), PROSE_SCHEMA)
+                      "Facts:\n" + json.dumps(payload, ensure_ascii=False),
+                      prose_schema(spec))
     if err:
         return None, facts, None, err
     text = assemble(platform, facts, prose)

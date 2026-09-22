@@ -130,9 +130,9 @@ _DAY_NAMES = (r"monday|tuesday|wednesday|thursday|friday|saturday|sunday"
 _WEEKDAY_PAREN = re.compile(r"\s*[（(]\s*(?P<day>[월화수목금토일]|(?i:" + _DAY_NAMES + r"))\s*[)）]")
 _WEEKDAY_KO    = re.compile(r"\s*(?P<day>[월화수목금토일]요일)")
 _WEEKDAY_EN    = re.compile(r"(?i:\s*\bon\s+)?(?P<day>(?i:\b(?:" + _DAY_NAMES + r")\b))")
-_PLACEHOLDER   = re.compile(r"\s*[\[［]\s*[^\]］]*?"
+_PLACEHOLDER   = re.compile(r"[ \t]*[\[［][ \t]*[^\]］\n]{0,30}?"
                             r"(?:링크|주소|날짜|장소|시간|가격|Link|link|URL|url|Insert|insert|form)"
-                            r"[^\]］]*?\s*[\]］]")
+                            r"[^\]］\n]{0,30}?[ \t]*[\]］]")
 
 # Restyle nouns, both scripts. Flagged, never deleted.
 _RESTYLE = ("세미나", "워크샵", "워크숍", "마스터클래스", "특강", "강연", "컨퍼런스",
@@ -816,8 +816,10 @@ def _circle_structure_scorer(content: str, weight: float) -> CriterionResult:
         weight=weight,
         message="Has section headers" if headers else "No headers found",
         actual="headers ✓" if headers else "headers ✗",
-        expected="At least one '##' or 'Title:' header",
-        suggestion="Good structure." if headers else "Add '## Heading' sections.",
+        expected="A plain-text label line ending in a colon (e.g. 'Event details:')",
+        suggestion=("Good structure." if headers else
+                    "Add a section header: a short label on its own line ending "
+                    "in a colon. Never '##' — strip_markdown() deletes it."),
     )
 
 
