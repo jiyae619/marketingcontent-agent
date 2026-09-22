@@ -473,6 +473,13 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 gen_id = payload.get('generation_id')
                 verdict_override = payload.get('verdict')       # explicit, e.g. 'reject'
                 flag_category = payload.get('flag_category')    # chip from EDIT_REASONS
+                # A review can name several defects at once. The list is the real
+                # input now; flag_category stays accepted so an older client, and
+                # every row already written, keep working.
+                flag_categories = payload.get('flag_categories') or []
+                if not isinstance(flag_categories, list):
+                    self._json(400, {'error': 'flag_categories must be a list'})
+                    return
                 edit_note = payload.get('edit_note')            # free text, never parsed
                 if platform not in VALID_PLATFORMS:
                     self._json(400, {'error': 'platform required'})
@@ -511,7 +518,7 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                     # exercised. An edit without a family cannot be routed: the loop
                     # has no way to tell "cut the cliche" from "fixed the date", and
                     # guessing is what teaches a fact as a style rule.
-                    if verdict == 'edit' and not flag_category:
+                    if verdict == 'edit' and not (flag_category or flag_categories):
                         # pct_changed rides along so the UI can show the reviewer how
                         # much they actually rewrote before asking them why.
                         d = feedback_db.diff_ops(original, final_content)
@@ -528,14 +535,17 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                         original_content=original,
                         final_content=final_content,
                         flag_category=flag_category,
+                        flag_categories=flag_categories,
                         edit_note=edit_note,
                     )
                 except ValueError as ve:
                     self._json(400, {'error': str(ve)})
                     return
+                _chips = [c for c in ([flag_category] if flag_category else []) + flag_categories]
                 print(f"[feedback] {platform} {verdict} id={row_id} gen={gen_id} "
-                      f"flag={flag_category or '-'}"
-                      f"/{feedback_db.EDIT_REASONS.get(flag_category, '-')} "
+                      f"flags={','.join(_chips) or '-'} "
+                      f"fam={','.join(sorted({feedback_db.EDIT_REASONS[c] for c in _chips})) or '-'} "
+                      f"note={'y' if edit_note else 'n'} "
                       f"voice_v={feedback_db.voice_version(platform)}")
                 self._json(200, {'id': row_id, 'platform': platform, 'verdict': verdict})
 

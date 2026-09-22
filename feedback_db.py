@@ -268,6 +268,38 @@ def _migrate() -> None:
                 except sqlite3.OperationalError as e:
                     if "duplicate column" not in str(e).lower():
                         raise
+        # One review can name several defects at once — "the date is wrong AND it
+        # reads like a brochure" is one edit with two reasons. flag_category is a
+        # single column, so storing a second reason meant either dropping it or
+        # picking a winner, and the family is what ROUTES the row: a review that is
+        # both voice and grounding must reach BOTH readers, and a single column
+        # cannot express that. Hence a join table rather than a wider row.
+        #
+        # flag_category / flag_family stay on feedback_events as the primary chip,
+        # so every existing row, query and export keeps working unchanged.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feedback_flags (
+                event_id  INTEGER NOT NULL,
+                category  TEXT NOT NULL,
+                family    TEXT NOT NULL,
+                PRIMARY KEY (event_id, category),
+                FOREIGN KEY (event_id) REFERENCES feedback_events(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ff_family ON feedback_flags(family, event_id)"
+        )
+        # Backfill, so the join table is authoritative from the first read rather
+        # than only describing rows written after this migration.
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO feedback_flags (event_id, category, family)
+            SELECT id, flag_category, flag_family FROM feedback_events
+            WHERE flag_category IS NOT NULL AND flag_family IS NOT NULL
+            """
+        )
         # judge_results columns added after the table first shipped.
         jr_existing = {row[1] for row in conn.execute("PRAGMA table_info(judge_results)")}
         for col, decl in (("summary", "TEXT"),
@@ -570,6 +602,7 @@ def log_feedback(*, generation_id: Optional[int], platform: str, verdict: str,
                  original_content: Optional[str] = None,
                  final_content: Optional[str] = None,
                  flag_category: Optional[str] = None,
+                 flag_categories: Optional[List[str]] = None,
                  edit_note: Optional[str] = None) -> int:
     """Record one human verdict on a generation. Returns the event id.
 
@@ -580,14 +613,21 @@ def log_feedback(*, generation_id: Optional[int], platform: str, verdict: str,
     """
     if verdict not in VALID_VERDICTS:
         raise ValueError(f"unknown verdict: {verdict!r}")
-    flag_family = None
-    if flag_category is not None:
+    # One chip or several. Order is preserved because the FIRST is what lands in
+    # the legacy flag_category column, and a reviewer's first pick is their
+    # primary reason. Duplicates are dropped; the set is what matters.
+    cats: List[str] = []
+    for c in ([flag_category] if flag_category else []) + list(flag_categories or []):
+        if c and c not in cats:
+            cats.append(c)
+    for c in cats:
         # Validated against EDIT_REASONS, which is a strict superset of
         # FLAG_TAXONOMY with identical families — so every category that was valid
         # before is still valid and still resolves to the same family.
-        if flag_category not in EDIT_REASONS:
-            raise ValueError(f"unknown flag category: {flag_category!r}")
-        flag_family = EDIT_REASONS[flag_category]
+        if c not in EDIT_REASONS:
+            raise ValueError(f"unknown flag category: {c!r}")
+    flag_category = cats[0] if cats else None
+    flag_family = EDIT_REASONS[flag_category] if flag_category else None
     if final_content is not None and not is_genuine_content(final_content):
         raise ValueError("final_content is not genuine content")
     diff = diff_ops(original_content, final_content)
@@ -607,6 +647,12 @@ def log_feedback(*, generation_id: Optional[int], platform: str, verdict: str,
              (edit_note or "").strip()[:200] or None),
         )
         event_id = cur.lastrowid
+        if cats:
+            conn.executemany(
+                "INSERT OR IGNORE INTO feedback_flags (event_id, category, family) "
+                "VALUES (?, ?, ?)",
+                [(event_id, c, EDIT_REASONS[c]) for c in cats],
+            )
         if verdict in ("approve", "edit"):
             # Bump the voice counter → cached generations for this platform
             # become stale (their cache_key includes voice_version).
@@ -821,14 +867,17 @@ def voice_edits(platform: str, limit: int = 6) -> List[Dict]:
     with _connect() as conn:
         cur = conn.execute(
             """
-            SELECT id, generation_id, platform, flag_category,
-                   original_content, final_content, edit_ops, pct_changed, edit_note,
-                   created_at
-            FROM feedback_events
-            WHERE platform = ? AND verdict = 'edit'
-              AND flag_family = 'voice'
-              AND edit_ops IS NOT NULL
-            ORDER BY created_at DESC
+            SELECT e.id, e.generation_id, e.platform, e.flag_category,
+                   e.original_content, e.final_content, e.edit_ops, e.pct_changed,
+                   e.edit_note, e.created_at,
+                   (SELECT group_concat(category) FROM feedback_flags
+                     WHERE event_id = e.id) AS flag_categories
+            FROM feedback_events e
+            WHERE e.platform = ? AND e.verdict = 'edit'
+              AND EXISTS (SELECT 1 FROM feedback_flags f
+                           WHERE f.event_id = e.id AND f.family = 'voice')
+              AND e.edit_ops IS NOT NULL
+            ORDER BY e.created_at DESC
             LIMIT ?
             """,
             (platform, limit),
@@ -848,12 +897,17 @@ def grounding_defects(platform: str, limit: int = 20) -> List[Dict]:
     with _connect() as conn:
         cur = conn.execute(
             """
-            SELECT id, generation_id, platform, verdict, flag_category,
-                   original_content, final_content, edit_ops, edit_note, created_at
-            FROM feedback_events
-            WHERE platform = ?
-              AND (flag_family = 'grounding' OR (verdict = 'reject' AND flag_category IS NOT NULL))
-            ORDER BY created_at DESC
+            SELECT e.id, e.generation_id, e.platform, e.verdict, e.flag_category,
+                   e.original_content, e.final_content, e.edit_ops, e.edit_note,
+                   e.created_at,
+                   (SELECT group_concat(category) FROM feedback_flags
+                     WHERE event_id = e.id) AS flag_categories
+            FROM feedback_events e
+            WHERE e.platform = ?
+              AND (EXISTS (SELECT 1 FROM feedback_flags f
+                            WHERE f.event_id = e.id AND f.family = 'grounding')
+                   OR (e.verdict = 'reject' AND e.flag_category IS NOT NULL))
+            ORDER BY e.created_at DESC
             LIMIT ?
             """,
             (platform, limit),

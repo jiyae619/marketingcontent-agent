@@ -6,7 +6,6 @@ import { PlatformSelector } from './components/PlatformSelector/PlatformSelector
 import { TabNavigation } from './components/TabNavigation/TabNavigation';
 import { PlatformPreview } from './components/PlatformPreview/PlatformPreview';
 import { StatusMessage, LoadingSpinner } from './components/StatusMessage/StatusMessage';
-import { ModelCompare } from './components/ModelCompare/ModelCompare';
 import { JudgeModelSelect } from './components/JudgeModelSelect/JudgeModelSelect';
 import { ReviewPanel } from './components/ReviewPanel/ReviewPanel';
 import { GeneratingOverlay } from './components/GeneratingOverlay/GeneratingOverlay';
@@ -335,21 +334,9 @@ function App() {
                       platform={platform}
                       content={generatedContent[platform] || ''}
                       generationId={generationIds[platform]}
-                      judgeModel={judgeModel}
                       onStatus={showStatus}
                     />
                   )}
-                  <ModelCompare
-                    platform={platform}
-                    originalContent={originalContent}
-                    linkUrl={linkUrl}
-                    hasImage={Boolean(imageDataUrl)}
-                    onPickWinner={(text, gen_id, providerKey) => {
-                      setGeneratedContent(prev => ({ ...prev, [platform]: text }));
-                      if (gen_id) setGenerationIds(prev => ({ ...prev, [platform]: gen_id }));
-                      showStatus('success', `Using ${providerKey} version for ${platform}`);
-                    }}
-                  />
                 </Card>
               </div>
             ))}

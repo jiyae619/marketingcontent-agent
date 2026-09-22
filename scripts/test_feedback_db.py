@@ -297,6 +297,41 @@ def test_u6_edit_diff_and_routing():
                     original_content=orig, final_content="Different text entirely here.")
     check("unlabelled edit is excluded from the voice corpus", db.voice_edits("x") == [])
 
+    # --- several reasons on one review ------------------------------------
+    # "the date is wrong AND it reads like a brochure" is one edit with two
+    # reasons, and the family is what ROUTES the row. A single flag_category
+    # column had to pick a winner, which silently dropped half the signal.
+    g4 = db.log_generation(platform="whatsapp", original_input="c",
+                           generated_content=orig)
+    ev = db.log_feedback(generation_id=g4, platform="whatsapp", verdict="edit",
+                         original_content=orig,
+                         final_content="A different draft, rewritten by a human.",
+                         flag_categories=["ai_slop", "wrong_detail"],
+                         edit_note="reads like a brochure and the date was wrong")
+    v4 = db.voice_edits("whatsapp")
+    d4 = db.grounding_defects("whatsapp")
+    check("a two-family review reaches the VOICE reader",
+          any(r["id"] == ev for r in v4))
+    check("the same review reaches the GROUNDING reader",
+          any(r["id"] == ev for r in d4))
+    check("both chips are readable on the row",
+          sorted((v4[0].get("flag_categories") or "").split(",")) ==
+          ["ai_slop", "wrong_detail"])
+    # The first pick stays in the legacy column, so existing queries and the
+    # export script see exactly what they saw before.
+    check("the primary chip still lands in flag_category",
+          v4[0]["flag_category"] == "ai_slop")
+
+    # One bad chip invalidates the whole submission rather than being dropped —
+    # a silently discarded reason is worse than a rejected form.
+    try:
+        db.log_feedback(generation_id=None, platform="x", verdict="edit",
+                        original_content="a", final_content="b",
+                        flag_categories=["ai_slop", "not_a_chip"])
+        raise AssertionError("unknown chip was accepted in a list")
+    except ValueError:
+        check("an unknown chip in a list rejects the whole set", True)
+
     try:
         db.log_feedback(generation_id=None, platform="x", verdict="edit",
                         original_content="a", final_content="b", flag_category="not_a_chip")
