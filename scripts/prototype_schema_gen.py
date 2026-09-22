@@ -113,7 +113,9 @@ def parse_brief(brief):
                     "time": "time", "시간": "time", "when": "time",
                     "date": "date", "일시": "date", "날짜": "date",
                     "price": "price", "참가비": "price", "cost": "price",
-                    "link": "link", "url": "link", "링크": "link"}.get(key)
+                    "link": "link", "url": "link", "링크": "link",
+                    "person": "person", "speaker": "person", "연사": "person",
+                    "host": "person", "guest": "person", "강사": "person"}.get(key)
             if slot and not facts[slot]:
                 facts[slot] = val
             continue

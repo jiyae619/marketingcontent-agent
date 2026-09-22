@@ -53,14 +53,111 @@ LABELS_KO = {"date": "일시", "time": "시간", "location": "장소",
              "person": "연사", "price": "참가비", "topics": "주제"}
 LABELS_EN = {"date": "Date", "time": "Time", "location": "Location",
              "person": "Speaker", "price": "Price", "topics": "Topics"}
+LABELS_KO["event_type"] = "행사"
+LABELS_EN["event_type"] = "Event"
+
+# --- event type as an enum -------------------------------------------------
+# `restyle` (a briefed "coaching session" shipping as 세미나 / 워크샵 / 마스터클래스)
+# is the last defect class strip_ungrounded can only FLAG, and it survives because
+# the event type reaches the model as a free string it is free to paraphrase.
+# An enum removes the freedom: the brief selects a key, and the label is looked up.
+# Same move as date and location — the model is never asked to produce the value.
+#
+# Aliases are matched longest-first so "info session" does not resolve via "session".
+EVENT_TYPES = {
+    "coaching":   ("Coaching session", "코칭 세션",
+                   ["coaching session", "coaching", "1:1", "코칭", "멘토링", "mentoring"]),
+    "info":       ("Info session", "설명회",
+                   ["info session", "information session", "설명회", "오리엔테이션"]),
+    "workshop":   ("Workshop", "워크숍",
+                   ["workshop", "워크숍", "워크샵", "실습"]),
+    "seminar":    ("Seminar", "세미나",
+                   ["seminar", "세미나"]),
+    "webinar":    ("Webinar", "웨비나",
+                   ["webinar", "웨비나", "온라인 세미나"]),
+    "talk":       ("Talk", "강연",
+                   ["fireside chat", "guest talk", "lecture", "강연", "특강", "talk"]),
+    "meetup":     ("Meetup", "모임",
+                   ["networking", "meetup", "meet-up", "네트워킹", "모임"]),
+    "conference": ("Conference", "컨퍼런스",
+                   ["conference", "summit", "컨퍼런스", "콘퍼런스"]),
+    "class":      ("Class", "클래스",
+                   ["masterclass", "course", "class", "마스터클래스", "클래스", "수업"]),
+}
+_ALIASES = sorted(((a, k) for k, (_, _, al) in EVENT_TYPES.items() for a in al),
+                  key=lambda x: -len(x[0]))
+# "coaching session with 박운영" / "박운영과 함께하는 코칭" -> the name, and the rest.
+_WITH = re.compile(r"\s+(?:with|w/|featuring|feat\.?)\s+(.+)$", re.I)
+_KO_WITH = re.compile(r"^(.+?)(?:\s*(?:님)?\s*(?:와|과)\s*함께(?:하는)?)\s*(.+)$")
+
+
+def classify_event_type(raw):
+    """Map a briefed phrase onto an enum key. Code only — no model, no inference
+    beyond a literal alias match. Returns None when nothing matches, and a None
+    event_type emits no line, exactly like any other unknown fact."""
+    if not raw:
+        return None
+    low = str(raw).lower()
+    for alias, key in _ALIASES:
+        if alias in low:
+            return key
+    return None
+
+
+def canonicalize(facts):
+    """Split the free-text first line into (person, event_type key).
+
+    parse_brief() puts the whole line in event_type, so "coaching session with
+    박운영" left person null and the name buried in a string the model then
+    paraphrased. Pulling the name out and resolving the rest to an enum key makes
+    both fields code-written.
+    """
+    raw = facts.get("event_type")
+    if isinstance(raw, str) and raw.strip():
+        rest = raw.strip()
+        m = _KO_WITH.match(rest)
+        if m:
+            if not facts.get("person"):
+                facts["person"] = m.group(1).strip()
+            rest = m.group(2).strip()
+        else:
+            m = _WITH.search(rest)
+            if m:
+                if not facts.get("person"):
+                    facts["person"] = m.group(1).strip()
+                rest = _WITH.sub("", rest).strip()
+        facts["event_type"] = classify_event_type(rest)
+    return facts
+
+
+def event_label(key, ko):
+    en, kr, _ = EVENT_TYPES.get(key or "", (None, None, None))
+    return kr if ko else en
+
+
+def flag_restyle(text, key, ko):
+    """After the enum, a rival event-type label in the prose is a restyle by
+    definition: the canonical label is the only correct one."""
+    if not key:
+        return []
+    mine = (event_label(key, ko) or "").lower()
+    hits = []
+    for k, (en, kr, _) in EVENT_TYPES.items():
+        if k == key:
+            continue
+        for lab in (en, kr):
+            if lab.lower() != mine and re.search(re.escape(lab), text, re.I):
+                hits.append(("restyle", lab))
+    return hits
 
 
 def prose_system(platform, spec):
     """One short instruction per channel. Short on purpose: the ablation measured
     gemma2:2b grounding perfectly at 120 chars and failing at 3,321."""
     s = [f"You write {platform} prose for an UPCOMING event.",
-         "You are given the facts. Do NOT restate date, time, location or price — "
-         "they are added separately.",
+         "You are NOT given the date, time, location or price, and a details "
+         "block carrying them is appended after your text. Never state or guess "
+         "them, and never name a venue.",
          f"hook: one complete sentence. body: {spec['body']} short paragraph(s). "
          "cta: one sentence inviting the reader to register or reply."]
     lo, hi = spec["tags"]
@@ -79,6 +176,11 @@ def fact_lines(facts, ko, spec):
     '[Insert Price]' becomes unrepresentable: no branch writes a placeholder."""
     L = LABELS_KO if ko else LABELS_EN
     seen, out = [], []
+    ev = event_label(facts.get("event_type"), ko)
+    if ev:
+        seen.append(ev)
+        out.append(f"• {L['event_type']}: {ev}" if spec["bullets"]
+                   else f"{L['event_type']}: {ev}")
     for k in ("date", "time", "location", "person", "price"):
         v = facts.get(k)
         v = v.strip() if isinstance(v, str) else None
@@ -97,7 +199,12 @@ def assemble(platform, facts, prose):
     spec = CHANNELS[platform]
     cta = (prose.get("cta") or "").strip()
     hook = (prose.get("hook") or "").strip()
-    body = [b.strip() for b in (prose.get("body") or []) if b.strip() and b.strip() != cta]
+    # hyperclovax emitted the literal string "cta" as a body element, which shipped
+    # into the post. A body paragraph that is just a schema key name is never prose.
+    _KEYS = {"hook", "body", "cta", "hashtags"}
+    body = [b.strip() for b in (prose.get("body") or [])
+            if b.strip() and b.strip() != cta
+            and b.strip().strip("':\"").lower() not in _KEYS]
     ko = is_korean(hook + " ".join(body))
     facts_block = fact_lines(facts, ko, spec)
 
@@ -153,8 +260,9 @@ def flag_prose_contradictions(text, facts, brief):
 
 
 def generate(platform, brief, model_id):
-    facts = parse_brief(brief)
-    missing = [k for k, v in facts.items() if k != "topics" and not v]
+    facts = canonicalize(parse_brief(brief))
+    missing = [k for k, v in facts.items()
+               if k not in ("topics", "event_type") and not v]
     if missing:
         mf, err = call(model_id, EXTRACT_SYS, f"Input:\n{brief}", FACTS_SCHEMA)
         if not err:
@@ -164,13 +272,23 @@ def generate(platform, brief, model_id):
                     facts[k] = mf[k]
     facts, _ = ground_facts(facts, brief)
     spec = CHANNELS[platform]
+    # The prose is shown ONLY what it needs to write around: who, what kind of
+    # thing, and the topics. Date, time, location, price and link are withheld
+    # because code emits them — and because the model cannot contradict a fact it
+    # was never given. The instruction not to restate them was measured being
+    # ignored on 6/6 channels, which is the usual result for a rule in a prompt.
+    payload = {"event_type": event_label(facts.get("event_type"), is_korean(brief))
+                             or facts.get("event_type"),
+               "person": facts.get("person"),
+               "topics": facts.get("topics") or []}
     prose, err = call(model_id, prose_system(platform, spec),
-                      "Facts:\n" + json.dumps(facts, ensure_ascii=False), PROSE_SCHEMA)
+                      "Facts:\n" + json.dumps(payload, ensure_ascii=False), PROSE_SCHEMA)
     if err:
         return None, facts, None, err
     text = assemble(platform, facts, prose)
     text, flags = strip_ungrounded(strip_markdown(text), brief)
     flags += flag_prose_contradictions(text, facts, brief)
+    flags += flag_restyle(text, facts.get("event_type"), is_korean(text))
     return text, facts, flags, None
 
 
