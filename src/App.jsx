@@ -10,6 +10,7 @@ import { ModelCompare } from './components/ModelCompare/ModelCompare';
 import { JudgeModelSelect } from './components/JudgeModelSelect/JudgeModelSelect';
 import { ReviewPanel } from './components/ReviewPanel/ReviewPanel';
 import { GeneratingOverlay } from './components/GeneratingOverlay/GeneratingOverlay';
+import { BriefForm } from './components/BriefForm/BriefForm';
 import './styles/index.css';
 
 const PLATFORM_TABS = [
@@ -23,6 +24,13 @@ const PLATFORM_TABS = [
 
 function App() {
   const [originalContent, setOriginalContent] = useState('');
+  // Two input modes. 'fields' is the structured path: code writes the facts and
+  // the model writes only prose. 'text' is the original free-text brief, kept
+  // because a pasted brief is still the fastest way in — but a parsed brief is a
+  // guess and a submitted form is not.
+  const [inputMode, setInputMode] = useState('fields');
+  const [briefFields, setBriefFields] = useState({ ko: false, topics: [] });
+  const [fieldErrors, setFieldErrors] = useState({});
   const [linkUrl, setLinkUrl] = useState('');
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState(['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']);
@@ -65,7 +73,7 @@ function App() {
   };
 
   const generateContent = async () => {
-    if (!originalContent.trim()) {
+    if (inputMode === 'text' && !originalContent.trim()) {
       showStatus('error', 'Please enter some content to transform');
       return;
     }
@@ -98,22 +106,34 @@ function App() {
       // System prompt is assembled server-side — we only send the raw user content.
       const promises = selectedPlatforms.map(async (platform) => {
         try {
-          const response = await fetch('/api/gemini', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              platform,
-              link_url: linkUrl.trim(),
-              has_image: Boolean(imageDataUrl),
-              judge_model: judgeModel || undefined,
-              messages: [{ role: 'user', content: userMessage }],
-            }),
-          });
+          const structured = inputMode === 'fields';
+          const response = await fetch(
+            structured ? '/api/generate/fields' : '/api/gemini',
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(structured ? {
+                platform,
+                judge_model: judgeModel || undefined,
+                fields: briefFields,
+              } : {
+                platform,
+                link_url: linkUrl.trim(),
+                has_image: Boolean(imageDataUrl),
+                judge_model: judgeModel || undefined,
+                messages: [{ role: 'user', content: userMessage }],
+              }),
+            });
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
+            if (response.status === 422 && errorData.errors) {
+              setFieldErrors(errorData.errors);
+              throw new Error('Fix the highlighted fields');
+            }
             throw new Error(errorData.error || 'API request failed');
           }
+          setFieldErrors({});
 
           const data = await response.json();
           const content = data.content[0].text;
@@ -174,6 +194,31 @@ function App() {
       <div className="container">
         {/* Input Section */}
         <Card title="📝 Original Content">
+          <div className="input-mode-switch">
+            <label>
+              <input type="radio" name="input-mode" value="fields"
+                     checked={inputMode === 'fields'}
+                     onChange={() => setInputMode('fields')} />
+              {' '}Event fields
+            </label>
+            <label>
+              <input type="radio" name="input-mode" value="text"
+                     checked={inputMode === 'text'}
+                     onChange={() => setInputMode('text')} />
+              {' '}Free text
+            </label>
+          </div>
+
+          {inputMode === 'fields' && (
+            <BriefForm
+              values={briefFields}
+              onChange={setBriefFields}
+              errors={fieldErrors}
+              disabled={isGenerating}
+            />
+          )}
+
+          {inputMode === 'text' && (
           <div className="input-grid">
             <div className="content-input-stack">
               <Input
@@ -227,12 +272,13 @@ function App() {
                 </div>
               </div>
             </div>
-
-            <PlatformSelector
-              selectedPlatforms={selectedPlatforms}
-              onChange={setSelectedPlatforms}
-            />
           </div>
+          )}
+
+          <PlatformSelector
+            selectedPlatforms={selectedPlatforms}
+            onChange={setSelectedPlatforms}
+          />
 
           <div className="action-bar input-actions">
             <Button

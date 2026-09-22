@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'testing/core'))
 
 import feedback_db
+import brief_fields
 from evaluators import evaluate as run_eval, strip_markdown, strip_ungrounded
 import providers
 import judge
@@ -173,6 +174,24 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
         # EDIT_REASONS, not FLAG_TAXONOMY: the chips answer "why did the human change
         # this", which is a richer question than "what did the judge detect", and
         # EDIT_REASONS is a superset with identical families. Same response shape.
+        # The form is rendered FROM this spec rather than hand-built in JSX, so a
+        # field added to brief_fields.FIELDS cannot silently fail to appear in the
+        # UI, and the enum the server validates against is the enum the UI offers.
+        if self.path == '/api/brief/fields':
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts'))
+            from schema_gen import EVENT_TYPES
+            self._json(200, {
+                'fields': [{'name': n, 'kind': k, 'required': r,
+                            'label_en': le, 'label_ko': lk}
+                           for n, k, r, le, lk in brief_fields.FIELDS],
+                'event_types': [{'key': k, 'en': en, 'ko': ko}
+                                for k, (en, ko, _) in EVENT_TYPES.items()],
+                'timezones': list(brief_fields.TIMEZONES),
+                'currencies': list(brief_fields.CURRENCIES),
+                'price_kinds': list(brief_fields.PRICE_KINDS),
+            })
+            return
+
         if self.path == '/api/flags':
             self._json(200, {'taxonomy': [
                 {'category': c, 'family': f}
@@ -536,6 +555,81 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
 
         # /api/judge — grade content against the flag taxonomy with a swappable
         # judge model (judge != generator). Returns the verdict in memory.
+        # The structured path. Deliberately a SEPARATE route from /api/gemini
+        # rather than a branch inside it: that route builds a free-text prompt and
+        # lets the model write the whole post, which is the design this replaces.
+        # Both log to the same spine, so their output stays comparable.
+        if self.path == '/api/generate/fields':
+            length = int(self.headers.get('Content-Length') or 0)
+            data = json.loads(self.rfile.read(length).decode('utf-8') or '{}')
+            platform = (data.get('platform') or '').lower()
+            if platform not in VALID_PLATFORMS:
+                self._json(400, {'error': f'Unknown platform: {platform}'})
+                return
+            fields = data.get('fields') or {}
+
+            # Validate BEFORE resolving a model or touching the cache: a bad form
+            # should cost nothing and come back with every error at once.
+            ko = bool(fields.get('ko'))
+            _facts, errors = brief_fields.validate(fields, ko=ko)
+            if errors:
+                self._json(422, {'error': 'field validation failed', 'errors': errors})
+                return
+
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts'))
+            import schema_gen
+            try:
+                _k, _l, resolved_model, _f = generators.resolve(data.get('generator_model'))
+            except ValueError as ve:
+                self._json(400, {'error': str(ve)}); return
+
+            v_ver = feedback_db.voice_version(platform)
+            channel_template = self.load_prompt_from_md(platform)
+            prompt_version = _prompt_hash(channel_template)
+            # The cache key describes what PRODUCED the text. The submitted fields
+            # ARE the input here, so they are serialised with sorted keys — two
+            # forms differing only in field order are the same brief.
+            canonical = json.dumps(fields, ensure_ascii=False, sort_keys=True)
+            cache_key = feedback_db.make_cache_key(
+                platform, canonical, fields.get('link') or '', False,
+                v_ver, resolved_model, prompt_version)
+            cached = feedback_db.generation_by_cache_key(cache_key)
+            if cached:
+                self._json(200, {'content': [{'text': cached['generated_content']}],
+                                 'generation_id': cached['id'], 'from_cache': True})
+                return
+
+            text, facts, flags, err = schema_gen.generate(
+                platform, None, resolved_model, fields=fields)
+            if err:
+                self._json(502, {'error': err}); return
+
+            ev = run_eval(platform, text)
+            result = {'content': [{'text': text}], 'generator_model': resolved_model,
+                      'grounding_flags': flags, 'facts': facts,
+                      'eval': {'total': ev['total'], 'criteria': ev['criteria']}}
+            try:
+                gen_id = feedback_db.log_generation(
+                    platform=platform, original_input=canonical,
+                    generated_content=text, link_url=fields.get('link') or '',
+                    has_image=False, eval_score=ev['total'],
+                    eval_detail=json.dumps(ev['criteria']), model=resolved_model,
+                    prompt_version=prompt_version, voice_version=v_ver,
+                    cache_key=cache_key)
+                result['generation_id'] = gen_id
+                print(f"[gen:fields] {platform} id={gen_id} score={ev['total']:.1f} "
+                      f"flags={flags or 'none'}")
+            except Exception as log_err:
+                existing = feedback_db.generation_by_cache_key(cache_key)
+                if existing:
+                    result['generation_id'] = existing['id']
+                else:
+                    # A generation with no row cannot be edited, flagged or fed
+                    # back into the loop, so it is not a success.
+                    self._json(500, {'error': f'logging failed: {log_err}'}); return
+            self._json(200, result)
+            return
+
         if self.path == '/api/judge':
             try:
                 length = int(self.headers.get('Content-Length', '0'))

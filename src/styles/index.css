@@ -1,1 +1,19 @@
 @import './globals.css';
+/* --- typed brief form ---------------------------------------------------- */
+.input-mode-switch { display: flex; gap: 1.25rem; margin-bottom: 1rem; font-size: 0.9rem; }
+.input-mode-switch label { cursor: pointer; }
+.brief-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.85rem 1rem; }
+.brief-form .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.brief-form label { font-size: 0.85rem; font-weight: 600; }
+.brief-form input, .brief-form select, .brief-form textarea {
+  padding: 0.5rem 0.6rem; border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: 6px; font: inherit; background: transparent; color: inherit;
+}
+.brief-form .required { color: #d94040; }
+/* The server is the only validator, so its message is what is shown. */
+.brief-form .field-error { color: #d94040; font-size: 0.78rem; }
+.brief-form input[aria-invalid='true'] { border-color: #d94040; }
+.form-hint { grid-column: 1 / -1; font-size: 0.8rem; opacity: 0.7; margin: 0; }
+.form-error { color: #d94040; font-size: 0.85rem; }
+.brief-form .inline-check { display: flex; align-items: center; gap: 0.4rem; font-weight: 500; }
+.brief-form .inline-check input { width: auto; }

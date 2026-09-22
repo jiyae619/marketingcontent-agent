@@ -162,7 +162,9 @@ def prose_system(platform, spec):
     s = [f"You write {platform} prose for an UPCOMING event.",
          "You are NOT given the date, time, location or price, and a details "
          "block carrying them is appended after your text. Never state or guess "
-         "them, and never name a venue.",
+         "them, and never name a venue. Never write a URL, and never write a "
+         "bracketed placeholder such as [link] or [링크] — the link is appended "
+         "too. End the cta with a period, never a colon.",
          f"hook: one complete sentence. body: {spec['body']} "
          + (f"paragraph(s) of about {spec['para']} characters each. "
             if spec.get("para") else "short paragraph(s). ")
@@ -222,6 +224,10 @@ def fact_lines(facts, ko, spec):
 def assemble(platform, facts, prose):
     spec = CHANNELS[platform]
     cta = (prose.get("cta") or "").strip()
+    # Stripping "[링크]" out of "지금 등록하세요: [링크]" leaves a sentence pointing at
+    # nothing. The prompt now forbids the placeholder, but a prompt is a request,
+    # so the dangling colon is closed in code.
+    cta = re.sub(r"[:：]\s*$", ".", cta)
     hook = (prose.get("hook") or "").strip()
     # hyperclovax emitted the literal string "cta" as a body element, which shipped
     # into the post. A body paragraph that is just a schema key name is never prose.
