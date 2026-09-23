@@ -99,9 +99,21 @@ function App() {
         ? `${originalContent}\n\n---\n${extras.join('\n')}`
         : originalContent;
 
-      // Generate for all selected platforms in parallel.
+      // Generate for selected platforms ONE AT A TIME, not in parallel.
       // System prompt is assembled server-side — we only send the raw user content.
-      const promises = selectedPlatforms.map(async (platform) => {
+      //
+      // This used to be Promise.all over a .map(), firing all six requests at
+      // once. The backend serializes every local-model call behind one global
+      // semaphore anyway (providers.py: _LOCAL_CALL_GATE — only one Ollama
+      // generation can run at a time on this machine), so firing six in
+      // parallel bought nothing but six blocked server threads and a queue —
+      // and on an 8GB machine under that queued load, the call queued last
+      // could still time out waiting its turn (measured: kakaotalk and x both
+      // failed in one batch). Sequential requests don't change the total
+      // generation time (still one-at-a-time underneath either way), but each
+      // request now starts only once the previous one has actually finished,
+      // so nothing sits queued behind work it didn't need to wait through.
+      const generateOne = async (platform) => {
         try {
           const structured = inputMode === 'fields';
           const response = await fetch(
@@ -148,9 +160,11 @@ function App() {
           }));
           return { platform, content };
         }
-      });
+      };
 
-      await Promise.all(promises);
+      for (const platform of selectedPlatforms) {
+        await generateOne(platform);
+      }
       showStatus('success', '✓ All platforms generated successfully!');
     } catch (error) {
       showStatus('error', `Generation failed: ${error.message}`);
