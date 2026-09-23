@@ -18,6 +18,10 @@ const PLATFORM_TABS = [
   { id: 'x', label: 'X' },
 ];
 const LABEL = Object.fromEntries(PLATFORM_TABS.map((t) => [t.id, t.label]));
+// Generation order, shortest output first (measured: x ~6s, chat ~9-12s,
+// circle ~30-40s). Total time is the same either way; the first finished post
+// appears in seconds instead of after the longest one.
+const FASTEST_FIRST = ['x', 'whatsapp', 'kakaotalk', 'linkedin', 'instagram', 'circle'];
 const PENDING = 'Generating...';
 
 function statusOf(content) {
@@ -138,8 +142,9 @@ function App() {
       return;
     }
 
+    const order = FASTEST_FIRST.filter((p) => selectedPlatforms.includes(p));
     setIsGenerating(true);
-    setActiveTab(selectedPlatforms[0]);
+    setActiveTab(order[0]);
     setGeneratedContent(Object.fromEntries(selectedPlatforms.map((p) => [p, PENDING])));
 
     // ONE AT A TIME, not Promise.all. The backend serializes every local-model
@@ -150,7 +155,7 @@ function App() {
     // same total time but nothing sits queued behind work it didn't need.
     let failed = 0;
     try {
-      for (const platform of selectedPlatforms) {
+      for (const platform of order) {
         if (!(await generateOne(platform))) failed += 1;
       }
       if (failed) {

@@ -48,10 +48,13 @@ CHANNELS = {
                       details="emoji", links="bio", header=False),
     "circle":    dict(body=4, bullets=True,  tags=(0, 0), sentences=None,
                       para=200, details="labels", marker="•", links="full", header=True),
-    "kakaotalk": dict(body=1, bullets=False, tags=(0, 0), sentences=3,
+    # body=0 on chat: the layout trimmed or dropped the body to fit on every
+    # live run, so generating it was 50-80 tokens of pure latency per message.
+    # A chat reader gets hook -> details -> ask, which is the whole message.
+    "kakaotalk": dict(body=0, bullets=False, tags=(0, 0), sentences=3,
                       prose_max=180, total_max=320,
                       details="labels", marker="▶", links="full", header=True),
-    "whatsapp":  dict(body=1, bullets=False, tags=(0, 0), sentences=4,
+    "whatsapp":  dict(body=0, bullets=False, tags=(0, 0), sentences=4,
                       prose_max=180, total_max=320,
                       details="labels", marker="•", links="full", header=True),
     # body=0: X's layout never shows one, and asking for it was where
@@ -298,14 +301,20 @@ def _prose(prose, spec):
     # so the dangling colon is closed in code.
     cta = re.sub(r"[:：]\s*$", ".", cta)
     hook = (prose.get("hook") or "").strip()
+    # The same sentence as hook AND cta reads as a copy-paste error.
+    if cta and cta == hook:
+        cta = "지금 신청하세요." if is_korean(hook) else "Save your seat."
     # hyperclovax emitted the literal string "cta" as a body element, which shipped
     # into the post. A body paragraph that is just a schema key name is never prose.
     _KEYS = {"hook", "body", "cta", "hashtags"}
-    # A single-token "paragraph" ("clickHere", "cta") is decoder debris, never prose.
+    # Decoder debris, never prose: a single-token "paragraph" ("clickHere"), or a
+    # field label written as copy ("click here: 링크", "register: …").
+    _LABEL_LEAD = re.compile(r"^(?:click here|register|cta|hook|body|link|hashtags?)\s*:", re.I)
     body = [b.strip() for b in (prose.get("body") or [])
             if b.strip() and b.strip() != cta
             and b.strip().strip("':\"").lower() not in _KEYS
-            and len(b.split()) > 1]
+            and len(b.split()) > 1
+            and not _LABEL_LEAD.match(b.strip())]
     # The model routinely ends the body with the same ask as the cta ("Register
     # now to secure your spot…" twice, a few lines apart). A reader sees the
     # repeat; drop a body paragraph that opens with the cta's first three words.
@@ -385,6 +394,120 @@ def assemble(platform, facts, prose):
         body = [_cap(body[0], budget)] if budget > 40 else []
         text = build(body)
     return text
+
+
+# --- invented logistics ---------------------------------------------------
+# The prose is never given the date, time, place or price, and it invents them
+# anyway: "3월 10일 오후 2시, 온라인 플랫폼" above a details block saying
+# 10월 16일 / Seattle University; "Seoul, South Korea" for a Seattle event;
+# "a free resource book"; "20년 experience". Telling it not to was measured
+# ignored on 6/6 channels, and handing it the real facts made it restate and
+# contradict them. Flagging still ships the wrong line.
+#
+# So the claim is REMOVED in code. Logistics belong only in the details block,
+# which code writes, so deleting a prose sentence that makes a logistics claim
+# costs the reader nothing. Whole sentences go, never words, so what is left
+# still reads as language.
+_SENT_SPLIT = re.compile(r"(?<=[.!?。])\s+|\n+")
+_DIGITS = re.compile(r"\d+")
+_RELATIVE_TIME = re.compile(
+    r"\b(?:today|tonight|tomorrow|yesterday|this (?:week|weekend|month)|"
+    r"next (?:week|month))\b|오늘|내일|모레|이번 ?주|다음 ?주|이번 ?달|다음 ?달", re.I)
+_ACT_TODAY = re.compile(
+    r"\b(?:register|sign up|signup|join|book|rsvp|save your (?:seat|spot)|apply)\b[^.!?]*\btoday\b"
+    r"|오늘 ?(?:바로 )?(?:신청|등록|예약)", re.I)
+_ONLINE = re.compile(r"\b(?:online|virtual|zoom|livestream|live stream)\b|온라인|화상|줌", re.I)
+_VENUE_WORD = re.compile(
+    r"(?:[A-Z][\w'-]+ )+(?:University|College|School|Hotel|Center|Centre|Hall|Campus)\b"
+    r"|[가-힣]+ ?(?:대학교|대학|호텔|센터|캠퍼스|회관)")
+_IN_PLACE = re.compile(r"\b(?:in|at)\s+(?:the\s+)?([A-Z][\w'-]+(?:,?\s+[A-Z][\w'-]+)*)")
+_KO_HELD_AT = re.compile(r"([가-힣A-Za-z]+(?: [가-힣A-Za-z]+)?)에서\s*(?:열|개최|진행|시작|만나)")
+_KO_GENERIC_PLACE = {"자리", "이곳", "현장", "세션", "행사", "이번", "세미나", "웨비나", "컨퍼런스", "여기"}
+_PRICE = re.compile(r"\bfree\b|\$|₩|무료|\d+ ?원", re.I)
+
+
+def _grounded_text(facts):
+    parts = [str(v) for k, v in facts.items() if v and k != "topics"]
+    parts += [str(t) for t in (facts.get("topics") or [])]
+    ev = facts.get("event_type")
+    if ev in EVENT_TYPES:
+        parts += list(EVENT_TYPES[ev][:2])
+    return "\n".join(parts)
+
+
+def _logistics_claim(sentence, facts, grounded, is_cta=False):
+    """Return why a sentence claims a date/time/place/price the facts don't make,
+    or None. Anything the details block already states is allowed through."""
+    g = grounded.lower()
+    nums = set(_DIGITS.findall(grounded))
+    if any(n not in nums for n in _DIGITS.findall(sentence)):
+        return "number"
+    # "Register today" is about the reader acting now, not a claim that the
+    # event is today. Only that phrasing is exempt, and only in the cta — a
+    # blanket cta exemption let "오늘이 … 세미나라, 등록하십니까?" (the event
+    # IS today) straight through.
+    if _RELATIVE_TIME.search(sentence) and not (is_cta and _ACT_TODAY.search(sentence)):
+        return "relative time"
+    m = _ONLINE.search(sentence)
+    if m and m.group(0).lower() not in g:
+        return "online venue"
+    for m in _VENUE_WORD.finditer(sentence):
+        if m.group(0).strip().lower() not in g:
+            return "venue"
+    for m in _IN_PLACE.finditer(sentence):
+        cand = m.group(1).strip().lower()
+        if cand not in g and not any(w in g for w in cand.split()):
+            return "place"
+    for m in _KO_HELD_AT.finditer(sentence):
+        cand = m.group(1).strip()
+        if cand.split()[-1] not in _KO_GENERIC_PLACE and cand.lower() not in g:
+            return "place"
+    price = (facts.get("price") or "").lower()
+    m = _PRICE.search(sentence)
+    if m and not (price and (m.group(0).lower() in price or m.group(0).lower() in g)):
+        return "price"
+    return None
+
+
+def _code_hook(facts, ko):
+    """Written by code when the model's hook was entirely a logistics claim."""
+    label = event_label(facts.get("event_type"), ko) or ("행사" if ko else "Event")
+    person = (facts.get("person") or "").strip()
+    topics = [t for t in (facts.get("topics") or []) if t][:3]
+    if ko:
+        head = f"{person}님과 함께하는 {label}" if person else label
+        return f"{head}: {', '.join(topics)}" if topics else head
+    head = f"{label} with {person}" if person else label
+    return f"{head}: {', '.join(topics)}" if topics else head
+
+
+def scrub_prose(prose, facts):
+    """Delete every prose sentence that makes an ungrounded logistics claim.
+    Returns (clean_prose, flags). An emptied hook is replaced by a code-written
+    one; an emptied cta by a plain ask."""
+    grounded = _grounded_text(facts)
+    flags = []
+
+    def clean(text, is_cta=False):
+        kept = []
+        for sent in (x for x in _SENT_SPLIT.split(text or "") if x.strip()):
+            why = _logistics_claim(sent, facts, grounded, is_cta)
+            if why:
+                flags.append(("invented_logistics", f"{why}: {sent.strip()[:70]}"))
+            else:
+                kept.append(sent.strip())
+        return " ".join(kept)
+
+    out = dict(prose)
+    out["hook"] = clean(prose.get("hook"))
+    out["body"] = [b for b in (clean(x) for x in (prose.get("body") or [])) if b]
+    out["cta"] = clean(prose.get("cta"), is_cta=True)
+    ko = is_korean(grounded + (prose.get("hook") or ""))
+    if not out["hook"]:
+        out["hook"] = _code_hook(facts, ko)
+    if not out["cta"]:
+        out["cta"] = "지금 신청하세요." if ko else "Save your seat."
+    return out, flags
 
 
 def flag_prose_contradictions(text, facts, brief):
@@ -480,8 +603,10 @@ def _finish(platform, facts, brief, model_id):
                       prose_schema(spec))
     if err:
         return None, facts, None, err
+    prose, scrub_flags = scrub_prose(prose, facts)
     text = assemble(platform, facts, prose)
     text, flags = strip_ungrounded(strip_markdown(text), brief)
+    flags = scrub_flags + flags
     flags += flag_prose_contradictions(text, facts, brief)
     flags += flag_restyle(text, facts.get("event_type"), is_korean(text))
     return text, facts, flags, None
