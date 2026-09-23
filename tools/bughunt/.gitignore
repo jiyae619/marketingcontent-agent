@@ -1,2 +1,5 @@
 report.md
-baseline.json
+# baseline.json is COMMITTED — see the note in the repo root .gitignore
+# and check_eval_quality() in detectors.py. It records the golden-set
+# drift baseline that CI compares against; ignoring it made that
+# comparison silently no-op on every run.

@@ -4,6 +4,11 @@ Runs N generator models across M channels on one brief, using the SAME assembled
 prompt each model would get in production (channel template + voice profile), then
 scores every output with the free heuristic so the comparison is not vibes-only.
 
+Sampling is pinned to temperature 0 by default. Without that, two runs of the same
+brief differ by more than the models do, and a "comparison" is mostly reading noise:
+across three runs of one brief the heuristic ranking of two models inverted twice
+while the models themselves never changed.
+
 Cloud models need network — run this from a normal terminal, not a sandbox.
 
     python3 scripts/compare_generators.py --brief "..." \
@@ -31,7 +36,7 @@ load_dotenv(os.path.join(HERE, ".env"))
 import feedback_db      # noqa: E402
 import generators       # noqa: E402
 import providers        # noqa: E402
-from evaluators import evaluate as run_eval, strip_markdown  # noqa: E402
+from evaluators import evaluate as run_eval, strip_markdown, strip_ungrounded  # noqa: E402
 
 DEFAULT_OUT = os.path.expanduser(
     "~/dev/documents/html-previews/marketing-agent-generator-compare.html")
@@ -64,24 +69,26 @@ def resolve_spec(spec):
     if spec.startswith("local:"):
         tag = spec.split(":", 1)[1]
         return (spec, f"Local — {tag}", tag,
-                lambda p, model=None, _t=tag: providers.call_local(p, model=_t))
+                lambda p, model=None, _t=tag, **kw: providers.call_local(p, model=_t, **kw))
     return generators.resolve(spec)
 
 
-def run_one(spec, platform, brief):
+def run_one(spec, platform, brief, temperature=0.0):
     key, label, model_id, fn = resolve_spec(spec)
     prompt = with_voice(platform, load_channel_prompt(platform))
     full = f"{prompt}\n\n---\nUser content:\n{brief}"
     t0 = time.time()
     try:
-        res = fn(full, model=model_id)
+        res = fn(full, model=model_id, temperature=temperature)
     except Exception as e:
         res = {"ok": False, "error": str(e), "cost_usd": 0.0}
-    # Mirror server.py: strip on the generation path so the comparison scores what
-    # would actually ship, not the raw model output.
+    # Mirror server.py exactly — markdown, then the grounding guard — so the
+    # comparison scores what would actually ship, not the raw model output. Computed
+    # once: strip_ungrounded returns the text and its flags together.
+    text, ground_flags = strip_ungrounded(strip_markdown(res.get("text") or ""), brief)
     out = {"spec": spec, "label": label, "model": model_id, "platform": platform,
            "wall_s": round(time.time() - t0, 1), "ok": bool(res.get("ok")),
-           "text": strip_markdown(res.get("text") or ""),
+           "text": text, "ground_flags": ground_flags,
            "error": res.get("error"),
            "cost_usd": res.get("cost_usd") or 0.0}
     if out["ok"] and out["text"]:
@@ -187,6 +194,10 @@ def main():
     ap.add_argument("--models", default="gpt-4o-mini,claude-haiku,local:qwen3:4b,local:gemma3:4b")
     ap.add_argument("--platforms", default="instagram,linkedin")
     ap.add_argument("-o", "--out", default=DEFAULT_OUT)
+    ap.add_argument("--temperature", type=float, default=0.0,
+                    help="sampling temperature; 0 (default) makes the comparison "
+                         "reproducible. Anything higher measures the sampler as much "
+                         "as the models.")
     args = ap.parse_args()
 
     specs = [s.strip() for s in args.models.split(",") if s.strip()]
@@ -203,10 +214,11 @@ def main():
     # both time out. Ollama serialises model loads anyway, so fan-out buys nothing.
     if cloud:
         with ThreadPoolExecutor(max_workers=4) as pool:
-            results += list(pool.map(lambda j: run_one(j[0], j[1], args.brief), cloud))
+            results += list(pool.map(
+                lambda j: run_one(j[0], j[1], args.brief, args.temperature), cloud))
     for j in local:
         print(f"  … {j[0]} / {j[1]} (serial — local models load one at a time)")
-        results.append(run_one(j[0], j[1], args.brief))
+        results.append(run_one(j[0], j[1], args.brief, args.temperature))
 
     for r in results:
         status = f"{r.get('score', 0):.0f}/100" if r["ok"] else f"FAILED: {str(r.get('error'))[:60]}"

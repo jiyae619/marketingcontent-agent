@@ -8,6 +8,7 @@ The DB file lives at testing/results/feedback.db and is gitignored.
 """
 
 import hashlib
+import difflib
 import json
 import os
 import sqlite3
@@ -36,6 +37,37 @@ FLAG_TAXONOMY = {
 }
 
 VALID_VERDICTS = ("approve", "edit", "reject")
+
+# Why a human changed a draft. SEPARATE from FLAG_TAXONOMY on purpose: the verdict
+# schema is derived from FLAG_TAXONOMY (judge.py) and the golden set has its own
+# DEFECTS dict, so every chip added here would otherwise force golden-set churn. The
+# two vocabularies answer different questions — what a judge DETECTED vs why a human
+# CHANGED something — and they share the part that matters, the family.
+#
+# The family is the routing decision, and it is the whole point of asking:
+#   voice      -> the edit teaches style; its diff feeds the voice corpus.
+#   grounding  -> the edit fixes a fact; its diff must NEVER feed the voice corpus,
+#                 or the loop learns "changed the date to Nov 3" as a style rule and
+#                 starts writing Nov 3 into every post.
+EDIT_REASONS = {
+    "ai_slop":        "voice",      # cliche, hype, template phrasing
+    "kr_en_register": "voice",      # wrong language or formality for the channel
+    "tone":           "voice",      # right facts, wrong warmth or directness
+    "length":         "voice",      # outside the channel's band
+    "convention":     "voice",      # emoji/hashtags/line breaks/markdown leak, OR a
+                                    # MISSING channel convention (CTA, sign-off)
+    "hallucination":  "grounding",  # a fact that is not in the brief
+    "wrong_detail":   "grounding",  # the fact is in the brief, transcribed wrong
+    "omission":       "grounding",  # dropped a fact the brief DID provide
+    "irrelevant":     "grounding",  # generic; missed what is notable about THIS event
+}
+
+# `convention` and `omission` exist because the only real edit in the database is an
+# ADDITION, not a correction: event 10 inserted "P.S. Register early - seats are
+# limited." A vocabulary framed purely as "what was wrong" had nowhere to put it. The
+# two kinds of omission route oppositely: a missing CTA is a convention the model
+# SHOULD learn, a dropped date from the brief is a prompt failure it must not.
+VOICE_REASONS = frozenset(k for k, fam in EDIT_REASONS.items() if fam == "voice")
 
 
 def _ensure_dir() -> None:
@@ -221,6 +253,52 @@ def _migrate() -> None:
         # (every /api/compare row, legacy rows) coexist with NULL cache_key.
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_gen_cache_key ON generations(cache_key)"
+        )
+        # feedback_events columns added with the edit-diff loop. `original_content`
+        # was already stored and never read: recent_copies() selected only
+        # final_content, so what the human CHANGED — the actual learning signal —
+        # was captured and discarded. These columns are where it lands.
+        fe_existing = {row[1] for row in conn.execute("PRAGMA table_info(feedback_events)")}
+        for col, decl in (("edit_ops", "TEXT"),        # JSON from diff_ops()
+                          ("pct_changed", "REAL"),     # normalized 0-100
+                          ("edit_note", "TEXT")):      # free text, never parsed
+            if col not in fe_existing:
+                try:
+                    conn.execute(f"ALTER TABLE feedback_events ADD COLUMN {col} {decl}")
+                except sqlite3.OperationalError as e:
+                    if "duplicate column" not in str(e).lower():
+                        raise
+        # One review can name several defects at once — "the date is wrong AND it
+        # reads like a brochure" is one edit with two reasons. flag_category is a
+        # single column, so storing a second reason meant either dropping it or
+        # picking a winner, and the family is what ROUTES the row: a review that is
+        # both voice and grounding must reach BOTH readers, and a single column
+        # cannot express that. Hence a join table rather than a wider row.
+        #
+        # flag_category / flag_family stay on feedback_events as the primary chip,
+        # so every existing row, query and export keeps working unchanged.
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feedback_flags (
+                event_id  INTEGER NOT NULL,
+                category  TEXT NOT NULL,
+                family    TEXT NOT NULL,
+                PRIMARY KEY (event_id, category),
+                FOREIGN KEY (event_id) REFERENCES feedback_events(id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ff_family ON feedback_flags(family, event_id)"
+        )
+        # Backfill, so the join table is authoritative from the first read rather
+        # than only describing rows written after this migration.
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO feedback_flags (event_id, category, family)
+            SELECT id, flag_category, flag_family FROM feedback_events
+            WHERE flag_category IS NOT NULL AND flag_family IS NOT NULL
+            """
         )
         # judge_results columns added after the table first shipped.
         jr_existing = {row[1] for row in conn.execute("PRAGMA table_info(judge_results)")}
@@ -497,10 +575,35 @@ def classify_verdict(original: Optional[str], final: str) -> str:
     return "approve" if _normalize_content(original) == _normalize_content(final) else "edit"
 
 
+def diff_ops(original: Optional[str], final: Optional[str]) -> Dict:
+    """What the human actually changed, computed from text already stored.
+
+    Word-level, not character-level (too noisy on prose) and not line-level (too
+    coarse: a one-word fix inside a paragraph would read as a whole-block rewrite).
+
+    `pct_changed` is 1 - SequenceMatcher.ratio(), so it is normalized against length
+    and comparable across drafts and platforms. It is the one quality number the
+    system can produce with no judge, no rubric and no labelling effort, because it
+    is a by-product of work the reviewer is doing anyway.
+
+    Returns {} when there is nothing to compare (a reject has no final_content).
+    """
+    if original is None or final is None:
+        return {}
+    a, b = original.split(), final.split()
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    ops = [{"op": tag, "from": " ".join(a[i1:i2]), "to": " ".join(b[j1:j2])}
+           for tag, i1, i2, j1, j2 in sm.get_opcodes() if tag != "equal"]
+    return {"ops": ops, "n_edits": len(ops),
+            "pct_changed": round((1 - sm.ratio()) * 100, 1)}
+
+
 def log_feedback(*, generation_id: Optional[int], platform: str, verdict: str,
                  original_content: Optional[str] = None,
                  final_content: Optional[str] = None,
-                 flag_category: Optional[str] = None) -> int:
+                 flag_category: Optional[str] = None,
+                 flag_categories: Optional[List[str]] = None,
+                 edit_note: Optional[str] = None) -> int:
     """Record one human verdict on a generation. Returns the event id.
 
     approve/edit bump voice_version (they yield content the voice loop learns
@@ -510,25 +613,46 @@ def log_feedback(*, generation_id: Optional[int], platform: str, verdict: str,
     """
     if verdict not in VALID_VERDICTS:
         raise ValueError(f"unknown verdict: {verdict!r}")
-    flag_family = None
-    if flag_category is not None:
-        if flag_category not in FLAG_TAXONOMY:
-            raise ValueError(f"unknown flag category: {flag_category!r}")
-        flag_family = FLAG_TAXONOMY[flag_category]
+    # One chip or several. Order is preserved because the FIRST is what lands in
+    # the legacy flag_category column, and a reviewer's first pick is their
+    # primary reason. Duplicates are dropped; the set is what matters.
+    cats: List[str] = []
+    for c in ([flag_category] if flag_category else []) + list(flag_categories or []):
+        if c and c not in cats:
+            cats.append(c)
+    for c in cats:
+        # Validated against EDIT_REASONS, which is a strict superset of
+        # FLAG_TAXONOMY with identical families — so every category that was valid
+        # before is still valid and still resolves to the same family.
+        if c not in EDIT_REASONS:
+            raise ValueError(f"unknown flag category: {c!r}")
+    flag_category = cats[0] if cats else None
+    flag_family = EDIT_REASONS[flag_category] if flag_category else None
     if final_content is not None and not is_genuine_content(final_content):
         raise ValueError("final_content is not genuine content")
+    diff = diff_ops(original_content, final_content)
     with _connect() as conn:
         cur = conn.execute(
             """
             INSERT INTO feedback_events
                 (generation_id, platform, verdict, flag_category, flag_family,
-                 original_content, final_content, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 original_content, final_content, created_at,
+                 edit_ops, pct_changed, edit_note)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (generation_id, platform, verdict, flag_category, flag_family,
-             original_content, final_content, time.time()),
+             original_content, final_content, time.time(),
+             json.dumps(diff["ops"], ensure_ascii=False) if diff else None,
+             diff.get("pct_changed") if diff else None,
+             (edit_note or "").strip()[:200] or None),
         )
         event_id = cur.lastrowid
+        if cats:
+            conn.executemany(
+                "INSERT OR IGNORE INTO feedback_flags (event_id, category, family) "
+                "VALUES (?, ?, ?)",
+                [(event_id, c, EDIT_REASONS[c]) for c in cats],
+            )
         if verdict in ("approve", "edit"):
             # Bump the voice counter → cached generations for this platform
             # become stale (their cache_key includes voice_version).
@@ -566,9 +690,24 @@ def voice_version(platform: str) -> int:
 
 
 def make_cache_key(platform: str, user_input: str, link_url: str,
-                   has_image: bool, voice_ver: int) -> str:
-    """Deterministic hash used as the cache lookup key."""
-    raw = json.dumps([platform, user_input, link_url, int(has_image), voice_ver],
+                   has_image: bool, voice_ver: int,
+                   model: str, prompt_version: str) -> str:
+    """Deterministic hash used as the cache lookup key.
+
+    `model` and `prompt_version` are part of the key because they are part of what
+    produced the text. Without them the key described only the INPUT, so the same
+    brief requested from a second generator returned the first generator's cached
+    output under the second one's name — a silent A/B failure, and the cached row
+    still carried the original model, so the mislabelling was invisible in the DB
+    too. Both are required, not optional with a default: a default would let a
+    caller reintroduce the collision by omission, which is how it got here.
+
+    `model` must be the RESOLVED model id (e.g. "gemma3:4b"), never the registry
+    key — a key of None resolves to the env default, and two keys can resolve to
+    the same model.
+    """
+    raw = json.dumps([platform, user_input, link_url, int(has_image), voice_ver,
+                      model, prompt_version],
                      ensure_ascii=False, sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()
 
@@ -669,6 +808,28 @@ def save_voice_profile(platform: str, style_text: str,
         )
 
 
+def voice_profile_history(platform: str, limit: int = 5) -> List[Dict]:
+    """Newest-first profile versions for a platform.
+
+    get_voice_profile() returns the ACTIVE one and hides staleness behind a None,
+    which is right for generation and useless for a regression gate: comparing a new
+    profile against the one it replaced needs both texts, and the table is append-only
+    precisely so the predecessor survives. This is the reader for that.
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT platform, version, style_text, based_on, created_at
+            FROM voice_profile_versions
+            WHERE platform = ?
+            ORDER BY version DESC
+            LIMIT ?
+            """,
+            (platform, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
 def recent_copies(platform: str, limit: int = 3) -> List[Dict]:
     """Most recent approved/edited content for a platform — drives the learning loop.
 
@@ -683,6 +844,70 @@ def recent_copies(platform: str, limit: int = 3) -> List[Dict]:
             FROM feedback_events
             WHERE platform = ? AND verdict IN ('approve','edit')
             ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (platform, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def voice_edits(platform: str, limit: int = 6) -> List[Dict]:
+    """Voice-family edits with their diffs — the corpus the style loop learns from.
+
+    Deliberately NOT the same thing as recent_copies(). That returns final_content as
+    few-shot examples, and a fact-corrected post is a perfectly good example of the
+    user's voice, so it is right that it stays there. The danger is narrower than the
+    plan first assumed: it is feeding the DIFF of a grounding fix as a style lesson.
+    "Changed the date to Nov 3" teaches the model to write Nov 3, not to write better.
+
+    So the family guard belongs here, on the diff consumer, and not on recent_copies.
+    Rows with no chip (legacy, pre-dating the chip) are excluded rather than assumed
+    safe: an unlabelled edit is exactly the case this guard exists for.
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT e.id, e.generation_id, e.platform, e.flag_category,
+                   e.original_content, e.final_content, e.edit_ops, e.pct_changed,
+                   e.edit_note, e.created_at,
+                   (SELECT group_concat(category) FROM feedback_flags
+                     WHERE event_id = e.id) AS flag_categories
+            FROM feedback_events e
+            WHERE e.platform = ? AND e.verdict = 'edit'
+              AND EXISTS (SELECT 1 FROM feedback_flags f
+                           WHERE f.event_id = e.id AND f.family = 'voice')
+              AND e.edit_ops IS NOT NULL
+            ORDER BY e.created_at DESC
+            LIMIT ?
+            """,
+            (platform, limit),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def grounding_defects(platform: str, limit: int = 20) -> List[Dict]:
+    """Grounding-family edits and rejects — fact problems, per platform.
+
+    The other half of the split, and the half with no consumer at all today. These
+    must never reach the voice profile: the fix for a grounding defect is a better
+    brief or a better channel prompt, not a different writing style. This reader
+    exists so that half stops being write-only — the intended use is a human reading
+    the list and folding what recurs into docs/<platform>.md.
+    """
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT e.id, e.generation_id, e.platform, e.verdict, e.flag_category,
+                   e.original_content, e.final_content, e.edit_ops, e.edit_note,
+                   e.created_at,
+                   (SELECT group_concat(category) FROM feedback_flags
+                     WHERE event_id = e.id) AS flag_categories
+            FROM feedback_events e
+            WHERE e.platform = ?
+              AND (EXISTS (SELECT 1 FROM feedback_flags f
+                            WHERE f.event_id = e.id AND f.family = 'grounding')
+                   OR (e.verdict = 'reject' AND e.flag_category IS NOT NULL))
+            ORDER BY e.created_at DESC
             LIMIT ?
             """,
             (platform, limit),

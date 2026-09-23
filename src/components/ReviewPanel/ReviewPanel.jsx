@@ -3,128 +3,52 @@ import PropTypes from 'prop-types';
 import { Button } from '../Button/Button';
 import './ReviewPanel.css';
 
-const FAMILY_LABEL = { grounding: 'ground', voice: 'voice' };
+// Taxonomy keys are snake_case identifiers; these are the few that don't read
+// correctly with a plain first-letter capital.
+const CHIP_LABEL = { ai_slop: 'AI slop', kr_en_register: 'KR/EN mix' };
+const chipLabel = (key) =>
+  CHIP_LABEL[key] || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
 
-// A local judge takes 17-54s (measured); call_local's own timeout is 120s. The old
-// poller gave up after 8s, so even a successful verdict landed after the UI had
-// stopped listening and only appeared if you clicked "Judge this" by hand.
-const POLL_STEPS_MS = [1000, 2000, 3000];  // then steady
-const POLL_STEADY_MS = 5000;
-const POLL_CEILING_MS = 130000;            // just past the provider timeout
-// No row yet usually means the heuristic cleared it and no judge was dispatched. But
-// all six platforms generate at once, and their claims serialise behind one SQLite
-// writer, so a claim can land later than the grace period. Show "skipped" after the
-// grace, keep polling to the shorter ceiling in case a claim is merely queued.
-const NO_ROW_GRACE_MS = 4000;
-const NO_ROW_CEILING_MS = 25000;
-const TERMINAL = new Set(['graded', 'abstained', 'failed']);
-
-// The judge writes its row on dispatch, so these are real distinguishable outcomes
-// rather than four different ways of showing nothing.
-const STATE_TEXT = {
-  unknown: 'Checking for a judge grade…',
-  pending: 'Judging… local models take 20–60s.',
-  skipped: 'Not judged — the heuristic scored this above the escalation threshold.',
-  abstained: 'Judge abstained — it could not verify this one, so it declined to guess. Your call.',
-  failed: 'Judge failed — no usable verdict came back. Re-run it, or decide unaided.',
-  timeout: 'Judge has not finished yet. It may still be running — re-check in a moment.',
+const FAMILY_LEAD = {
+  voice: 'Reads wrong',
+  grounding: 'Facts wrong',
 };
 
-function scoreColor(score) {
-  if (score == null) return 'var(--color-text-tertiary)';
-  if (score >= 70) return 'var(--color-success)';
-  if (score >= 45) return 'var(--color-warning)';
-  return 'var(--color-error)';
-}
-
 /**
- * Per-platform review surface: the LLM judge grade (with per-category reasoning
- * and an overall summary) plus explicit approve / reject-with-flag controls.
- * Grade is fetched from GET /api/judge/result (async, background-graded) with a
- * manual "Judge this" fallback; verdicts POST to /api/copies.
+ * Per-platform review surface: approve, or reject / edit with reasons.
+ *
+ * A review can name SEVERAL defects — "the date is wrong AND it reads like a
+ * brochure" is one review with two reasons — so the chips are a multi-select and
+ * the picked set stays visible while you type the note. The family of each chip
+ * is what routes the row (voice -> the voice profile, grounding -> the defect
+ * list), and a review that is both must reach both, which is why the set is sent
+ * rather than a single winner.
+ *
+ * The note is free text and is never parsed. It exists because the chips are a
+ * fixed taxonomy and the reason a draft is wrong often is not.
  */
-export function ReviewPanel({ platform, content, generationId, judgeModel, onStatus }) {
-  const [grade, setGrade] = useState(null);
-  const [judging, setJudging] = useState(false);
+export function ReviewPanel({ platform, content, generationId, onStatus }) {
   const [flags, setFlags] = useState([]);
-  const [rejecting, setRejecting] = useState(false);
+  // null = closed. Otherwise { mode: 'reject' | 'edit', pct }.
+  const [review, setReview] = useState(null);
+  const [picked, setPicked] = useState([]);
+  const [note, setNote] = useState('');
   const [verdict, setVerdict] = useState(null);
-  const [judgeState, setJudgeState] = useState('unknown');
+  // A new generation is a new review, so this whole panel is remounted by
+  // App.jsx (key={generationId}) rather than reset in an effect. An effect whose
+  // only job is setState causes a cascading render — the react-hooks rule that
+  // failed CI — and remounting is the pattern React documents for it.
 
   useEffect(() => {
     fetch('/api/flags').then((r) => r.json()).then((d) => setFlags(d.taxonomy || [])).catch(() => {});
   }, []);
 
-  // Poll until the verdict reaches a terminal status, not until a fixed clock runs
-  // out. Backs off so a slow local judge doesn't mean dozens of requests.
-  useEffect(() => {
-    setGrade(null); setVerdict(null); setRejecting(false); setJudgeState('unknown');
-    if (!generationId) return undefined;
+  const toggle = (category) =>
+    setPicked((prev) => (prev.includes(category)
+      ? prev.filter((c) => c !== category)
+      : [...prev, category]));
 
-    let cancelled = false;
-    let timer;
-    let attempt = 0;
-    const startedAt = Date.now();
-
-    const tick = async () => {
-      if (cancelled) return;
-      let d = null;
-      try {
-        const res = await fetch(`/api/judge/result?generation_id=${generationId}`);
-        d = await res.json();
-      } catch { /* a dropped request is not a verdict — keep polling */ }
-      if (cancelled) return;
-
-      // `status` is absent on rows written before the column existed; infer it.
-      const status = d && Object.keys(d).length
-        ? (d.status || (d.overall != null ? 'graded' : 'pending'))
-        : null;
-
-      const elapsed = Date.now() - startedAt;
-      if (status === null) {
-        if (elapsed > NO_ROW_GRACE_MS) setJudgeState('skipped');
-        if (elapsed > NO_ROW_CEILING_MS) return;   // no claim is coming
-      } else {
-        setJudgeState(status);
-        if (status === 'graded') setGrade(d);
-        if (TERMINAL.has(status)) return;
-        if (elapsed > POLL_CEILING_MS) { setJudgeState('timeout'); return; }
-      }
-      timer = setTimeout(tick, POLL_STEPS_MS[attempt] ?? POLL_STEADY_MS);
-      attempt += 1;
-    };
-
-    tick();
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [generationId]);
-
-  const runJudge = async () => {
-    if (!generationId || !content) return;
-    setJudging(true);
-    try {
-      const res = await fetch('/api/judge', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform, content, generation_id: generationId, model: judgeModel || undefined }),
-      });
-      const d = await res.json();
-      // `ok` only means the call succeeded. An abstained verdict still carries an
-      // `overall`, so rendering on `ok` alone would show a grade the judge explicitly
-      // refused to stand behind — the same collapse the status column removed from
-      // the background path.
-      const st = d.status
-        || (d.abstained ? 'abstained' : (d.ok && d.overall != null) ? 'graded' : 'failed');
-      setJudgeState(st);
-      setGrade(st === 'graded' ? d : null);
-      if (st === 'failed') {
-        onStatus?.('error', `Judge unavailable: ${d.error || 'no judge model reachable'}`);
-      }
-    } catch {
-      onStatus?.('error', 'Judge request failed');
-    } finally {
-      setJudging(false);
-    }
-  };
+  const close = () => { setReview(null); setPicked([]); setNote(''); };
 
   const postVerdict = async (body, okMsg) => {
     try {
@@ -134,106 +58,137 @@ export function ReviewPanel({ platform, content, generationId, judgeModel, onSta
         body: JSON.stringify(body),
       });
       const d = await res.json();
-      if (res.ok) { setVerdict(d.verdict); onStatus?.('success', okMsg(d.verdict)); }
-      else onStatus?.('error', d.error || 'Could not record verdict');
+      if (res.ok) { setVerdict(d.verdict); onStatus?.('success', okMsg(d.verdict)); return { ok: true, d }; }
+      // A missing chip is not an error the reviewer should see as one — it is the
+      // next step of the flow, so it is handled by the caller rather than shouted.
+      if (!d?.choices) onStatus?.('error', d.error || 'Could not record verdict');
+      return { ok: false, d };
     } catch {
       onStatus?.('error', 'Verdict request failed');
+      return { ok: false, d: null };
     }
   };
 
+  const okMsg = (v) => (v === 'edit' ? `Edit saved for ${platform}.` : `Approved ${platform}.`);
+
   const approve = async () => {
-    await postVerdict(
-      { platform, final_content: content, generation_id: generationId },
-      (v) => (v === 'edit' ? `✓ Saved your edit for ${platform}` : `✓ Approved ${platform}`),
+    // An edit is classified SERVER-side (it compares against the stored original,
+    // which this component does not hold), so the flow is: submit, and if the
+    // server says reasons are required, open the panel and resubmit.
+    const { ok, d } = await postVerdict(
+      { platform, final_content: content, generation_id: generationId }, okMsg,
     );
+    if (!ok) {
+      if (d?.choices) setReview({ mode: 'edit', pct: d.pct_changed });
+      return;
+    }
     try { await navigator.clipboard.writeText(content); } catch { /* clipboard optional */ }
   };
 
-  const reject = (category) => {
-    setRejecting(false);
-    return postVerdict(
-      { platform, verdict: 'reject', flag_category: category, generation_id: generationId },
-      () => `Rejected ${platform}${category ? ` — ${category.replace('_', ' ')}` : ''}`,
+  const submitReview = async () => {
+    const isEdit = review?.mode === 'edit';
+    if (isEdit && picked.length === 0) return;
+    const { ok } = await postVerdict(
+      isEdit
+        ? { platform, final_content: content, generation_id: generationId,
+            flag_categories: picked, edit_note: note || undefined }
+        : { platform, verdict: 'reject', generation_id: generationId,
+            flag_categories: picked, edit_note: note || undefined },
+      isEdit ? okMsg : () => `Flag recorded${picked.length ? ` — ${picked.length} reason${picked.length === 1 ? '' : 's'}` : ''}.`,
     );
+    if (!ok) return;
+    close();
+    if (isEdit) {
+      try { await navigator.clipboard.writeText(content); } catch { /* clipboard optional */ }
+    }
   };
 
   const canReview = Boolean(content) && !content.startsWith('Error:') && content !== 'Generating...';
   if (!canReview) return null;
 
+  const isEdit = review?.mode === 'edit';
+  const byFamily = (fam) => flags.filter((f) => f.family === fam);
+
   return (
     <div className="review-panel">
-      <div className="rp-grade">
-        {grade ? (
-          <>
-            <div className="rp-grade-top">
-              <div className="rp-ring" style={{ '--rp-pct': `${grade.overall}%`, '--rp-col': scoreColor(grade.overall) }}>
-                <span>{grade.overall}</span>
-              </div>
-              <div className="rp-grade-meta">
-                <div className="rp-grade-title">Judge grade — {grade.overall}/100</div>
-                <div className="rp-grade-sub">by {grade.judge_model}</div>
-              </div>
-              <span className={`rp-safety ${grade.safety_pass ? 'pass' : 'fail'}`}>
-                {grade.safety_pass ? '✓ Safety: PASS' : '⚠ Safety: FAIL'}
-              </span>
-            </div>
-
-            {grade.summary && <div className="rp-summary">{grade.summary}</div>}
-
-            <div className="rp-cats">
-              {Object.entries(grade.scores || {}).map(([cat, d]) => {
-                const fam = (flags.find((f) => f.category === cat) || {}).family;
-                return (
-                  <div className="rp-cat" key={cat}>
-                    <div className="rp-cat-head">
-                      <span className="rp-cat-name">
-                        {cat.replace(/_/g, ' ')}
-                        {fam && <span className={`rp-fam rp-fam-${fam}`}>{FAMILY_LABEL[fam] || fam}</span>}
-                      </span>
-                      <span className="rp-track"><span className="rp-fill" style={{ width: `${d.score}%`, background: scoreColor(d.score) }} /></span>
-                      <span className="rp-sc">{d.score}</span>
-                    </div>
-                    {d.reason && <div className="rp-reason">{d.reason}</div>}
-                  </div>
-                );
-              })}
-            </div>
-            <button className="rp-rejudge" onClick={runJudge} disabled={judging}>
-              {judging ? 'Re-judging…' : '↻ Re-judge'}
-            </button>
-          </>
-        ) : (
-          <div className={`rp-nograde rp-nograde-${judgeState}`}>
-            <span className="rp-nograde-text">
-              {judgeState === 'pending' && <span className="rp-spin" aria-hidden="true" />}
-              {STATE_TEXT[judgeState] || STATE_TEXT.unknown}
-            </span>
-            <Button variant="secondary" size="small" onClick={runJudge}
-                    disabled={judging || !generationId || judgeState === 'pending'}>
-              {judging ? 'Judging…' : judgeState === 'abstained' ? '↻ Try again' : '⚖️ Judge this'}
-            </Button>
-          </div>
-        )}
-      </div>
-
       <div className="rp-actions">
-        <Button variant="primary" size="small" onClick={approve}>✓ Approve &amp; copy</Button>
-        <Button variant="secondary" size="small" onClick={() => setRejecting((v) => !v)}>✕ Reject &amp; flag</Button>
+        <Button variant="primary" size="small" onClick={approve}>Approve &amp; copy</Button>
+        <Button variant="secondary" size="small"
+                onClick={() => setReview((r) => (r ? null : { mode: 'reject' }))}>
+          Reject &amp; flag
+        </Button>
         <span className="rp-actions-spacer" />
         {verdict && <span className={`rp-verdict rp-verdict-${verdict}`}>Recorded: {verdict}</span>}
-        <span className="rp-later">on approve → schedule / publish (later)</span>
       </div>
 
-      {rejecting && (
+      {review && (
         <div className="rp-flags">
-          <div className="rp-flags-lead">Why? Each flag is a labeled example that trains the judge on that exact criterion.</div>
-          <div className="rp-chips">
-            {flags.map((f) => (
-              <button key={f.category} className={`rp-chip rp-chip-${f.family}`} onClick={() => reject(f.category)}>
-                <span className="rp-chip-dot" /> {f.category.replace(/_/g, ' ')}
-              </button>
-            ))}
-            <button className="rp-chip rp-chip-plain" onClick={() => reject(null)}>Reject (no flag)</button>
+          <div className="rp-flags-lead">
+            {isEdit ? (
+              <>
+                You changed <b>{review.pct ?? '—'}%</b> of this draft. What kind of change was it?
+                {' '}A style fix teaches the voice loop; a fact fix never does.
+              </>
+            ) : (
+              <>What was wrong? Pick every reason that applies — each one is a labeled
+                example, and a review can be more than one thing.</>
+            )}
+          </div>
+
+          {['voice', 'grounding'].map((fam) => (
+            byFamily(fam).length > 0 && (
+              <div className="rp-chip-row" key={fam}>
+                <span className="rp-chip-rowlabel">{FAMILY_LEAD[fam]}</span>
+                <div className="rp-chips">
+                  {byFamily(fam).map((f) => {
+                    const on = picked.includes(f.category);
+                    return (
+                      <button key={f.category} type="button"
+                              aria-pressed={on}
+                              className={`rp-chip rp-chip-${f.family}${on ? ' rp-chip-on' : ''}`}
+                              onClick={() => toggle(f.category)}>
+                        <span className="rp-chip-check" aria-hidden="true">{on ? '✓' : ''}</span>
+                        {chipLabel(f.category)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )
+          ))}
+
+          {/* The picked set stays visible while the note is written, so it is
+              possible to check what was selected without scrolling back up. */}
+          <div className="rp-picked">
+            {picked.length === 0
+              ? <span className="rp-picked-none">No reasons selected yet</span>
+              : picked.map((c) => (
+                  <span key={c} className="rp-picked-tag">
+                    {chipLabel(c)}
+                    <button type="button" className="rp-picked-x"
+                            aria-label={`Remove ${chipLabel(c)}`} onClick={() => toggle(c)}>×</button>
+                  </span>
+                ))}
+          </div>
+
+          <label className="rp-note-label" htmlFor={`rp-note-${platform}`}>
+            Your notes {isEdit ? '(optional)' : '— what specifically went wrong?'}
+          </label>
+          <textarea id={`rp-note-${platform}`} className="rp-note" maxLength={500} rows={3}
+                    value={note}
+                    placeholder="e.g. invented a venue that isn't in the brief; the closing line reads like a press release"
+                    onChange={(e) => setNote(e.target.value)} />
+          <div className="rp-note-count">{note.length}/500 · free text, never parsed — a human reads it</div>
+
+          <div className="rp-chip-row">
+            <Button variant="primary" size="small" onClick={submitReview}
+                    disabled={isEdit && picked.length === 0}>
+              {isEdit ? 'Save edit' : 'Record rejection'}
+            </Button>
+            <button type="button" className="rp-chip rp-chip-plain" onClick={close}>Cancel</button>
+            {isEdit && picked.length === 0 && (
+              <span className="rp-hint">Pick at least one reason — an unlabelled edit cannot be routed.</span>
+            )}
           </div>
         </div>
       )}
@@ -245,6 +200,5 @@ ReviewPanel.propTypes = {
   platform: PropTypes.string.isRequired,
   content: PropTypes.string,
   generationId: PropTypes.number,
-  judgeModel: PropTypes.string,
   onStatus: PropTypes.func,
 };

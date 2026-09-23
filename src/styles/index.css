@@ -1,1 +1,50 @@
 @import './globals.css';
+
+/* --- typed brief form ---------------------------------------------------- */
+/* Six-column grid so related fields share a row: type + speaker, then
+   date / time / zone, then price / amount / currency. Long-by-nature fields
+   (location, link, agenda) take the full width. */
+.brief-form {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-md) var(--space-sm);
+}
+.brief-form .form-group { display: flex; flex-direction: column; margin: 0; min-width: 0; grid-column: span 6; }
+.brief-form .form-group:has(#brief-event_type),
+.brief-form .form-group:has(#brief-person) { grid-column: span 3; }
+.brief-form .form-group:has(#brief-date),
+.brief-form .form-group:has(#brief-time),
+.brief-form .form-group:has(#brief-timezone),
+.brief-form:has(#brief-price) .form-group:has(#brief-price_kind),
+.brief-form .form-group:has(#brief-price),
+.brief-form .form-group:has(#brief-currency) { grid-column: span 2; }
+
+.brief-form select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%2376746b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M4.5 6.5 8 10l3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+  padding-right: 28px;
+}
+.brief-form textarea { min-height: 84px; }
+
+.brief-form .required { color: var(--color-error); margin-left: 1px; }
+/* The server is the only validator, so its message is what is shown. */
+.brief-form .field-error { color: var(--color-error); font-size: var(--font-size-xs); margin-top: 4px; }
+.brief-form .form-group:has(.field-error) :is(input, select, textarea) { border-color: var(--color-error); }
+
+.brief-form .inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  margin: 0;
+}
+.brief-form .inline-check input { width: 15px; height: 15px; accent-color: var(--color-forest); }
+
+.form-hint { grid-column: 1 / -1; font-size: var(--font-size-sm); color: var(--color-text-tertiary); }
+.form-error { color: var(--color-error); font-size: var(--font-size-sm); }

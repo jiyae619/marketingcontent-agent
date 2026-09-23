@@ -127,6 +127,25 @@ def check_data_layer():
                     _clip(out), "python3 scripts/test_feedback_db.py")
 
 
+def check_loop_e2e():
+    """End-to-end fixture for the human-in-the-loop pipeline.
+
+    check_data_layer above asserts the write path in isolation. This asserts the
+    PIPELINE: a draft, a human verdict, the diff that verdict produced, the family
+    it routed to, what then reaches the synthesis prompt, and what the regression
+    gate does about a worse profile. Those stages each work alone and can still be
+    wired together wrongly — the guard that matters most here is that a grounding
+    edit never reaches the voice prompt, which is a property of the seam between
+    two components rather than of either one.
+
+    Stubs providers, so no model call, no keys and no spend.
+    """
+    rc, out = _run([sys.executable, "scripts/test_e2e_loop.py"], timeout=300)
+    return _finding("loop.e2e", rc == 0, "high",
+                    "end-to-end loop checks fail" if rc else "end-to-end loop checks pass",
+                    _clip(out), "python3 scripts/test_e2e_loop.py")
+
+
 # --------------------------------------------------------------------------
 # Judge-pipeline invariants
 #
@@ -203,6 +222,19 @@ elif route == "unreasoned-score":
         "ok": True, "cost_usd": 0.0, "latency_ms": 1, "text": json.dumps(payload)}
     v = J.judge("some content", "kakaotalk",
                 generator_model="gemma3:4b", source_brief="a real brief")
+elif route == "missing-category":
+    # The SECOND SHAPE of the unreasoned route, and a separate branch in the
+    # code: the category is absent from `scores` altogether rather than present
+    # with reason="". The local provider falls back to Ollama's json_mode, which
+    # constrains syntax and not shape, so a small model can simply drop a key.
+    # This shape shipped broken — the isinstance guard was inverted, so a missing
+    # category counted as reasoned and the verdict persisted as `graded` — while
+    # the reason="" shape above passed. One probe per shape, for that reason.
+    payload["scores"].pop("kr_en_register", None)
+    providers.call_local = lambda *a, **k: {
+        "ok": True, "cost_usd": 0.0, "latency_ms": 1, "text": json.dumps(payload)}
+    v = J.judge("some content", "kakaotalk",
+                generator_model="gemma3:4b", source_brief="a real brief")
 else:
     v = J.judge("some content", "kakaotalk",
                 generator_model="gemma3:4b", source_brief=None)
@@ -215,16 +247,19 @@ print(json.dumps({"judge_model": v.get("judge_model"),
                   "safety_pass": v.get("safety_pass"),
                   "reason": v.get("abstain_reason")}))
 ''' % (REPO, REPO)
-    # All THREE routes to abstention, because they are separate code paths and a fix
-    # to one is not a fix to the others. An earlier version of this detector probed
-    # only `no-brief`; an agent then nulled the score in that branch alone, and the
-    # partial fix passed. A contract test has to cover every way in — which is also
-    # why `unreasoned-score` was added the same day judge.py grew it: skipping that
-    # would repeat the exact mistake this comment is about.
+    # Every route to abstention, and every SHAPE of each route, because they are
+    # separate code paths and a fix to one is not a fix to the others. An earlier
+    # version of this detector probed only `no-brief`; an agent then nulled the score
+    # in that branch alone, and the partial fix passed. A contract test has to cover
+    # every way in — which is why `unreasoned-score` was added the same day judge.py
+    # grew it, and why `missing-category` is separate from it: the two shapes share a
+    # comment in judge.py but not a branch, and the missing-key shape was inverted and
+    # silently dead while the empty-reason shape worked.
     bad, seen = [], {}
     for route, why in (("no-brief", "source_brief=None"),
                        ("low-confidence", 'model returned confidence="low"'),
-                       ("unreasoned-score", 'a category scored with reason=""')):
+                       ("unreasoned-score", 'a category scored with reason=""'),
+                       ("missing-category", "a taxonomy category absent from scores")):
         rc, out = _run([sys.executable, "-c", probe, route], timeout=120)
         if rc != 0:
             return _finding("judge.abstention_contract", False, "medium",
@@ -347,9 +382,21 @@ def check_eval_quality():
     """
     golden = os.path.join(REPO, "testing/golden/golden_set_v1.json")
     if not os.path.exists(golden):
-        return _finding("eval.gate_metrics", True, "low",
-                        "no golden set present — skipped (rebuild: scripts/golden_set.py)",
-                        "", "python3 scripts/golden_set.py", fixable=False)
+        # This used to pass here — "skipped" — which is a vacuous green on every
+        # PR: testing/golden/*.json is gitignored, so a fresh clone (including
+        # every CI run) never has it, and CI has no model access to generate it
+        # (LOCAL_ONLY, no Ollama reachable). The one detector guarding CLAUDE.md
+        # rule 5 — prompts and scorers are one decision in two files — was
+        # therefore never actually checking anything on a pull request. A missing
+        # input is a reason to say so loudly, not a reason to look clean.
+        return _finding("eval.gate_metrics", False, "medium",
+                        "golden set missing — this check cannot run, and has been "
+                        "silently skipped on every PR until now",
+                        "testing/golden/golden_set_v1.json is gitignored, so no CI "
+                        "checkout has it and CI cannot generate one (no model "
+                        "access). Generate it locally and commit it, or this "
+                        "detector can never do its job in CI.",
+                        "python3 scripts/golden_set.py")
     rc, out = _run([sys.executable, "scripts/tune_threshold.py"], timeout=300)
     if rc != 0:
         return _finding("eval.gate_metrics", False, "medium",
@@ -368,11 +415,23 @@ def check_eval_quality():
         except Exception:
             prior = {}
     if not prior:
-        # First run records the baseline rather than inventing a verdict about it.
+        # baseline.json is ALSO gitignored. Auto-recording here used to pass
+        # silently, which in CI means: no baseline in the checkout, this branch
+        # writes one to a workspace that is thrown away when the job ends, and the
+        # very next run repeats the exact same "first run" with nothing ever
+        # compared. Locally that self-heals in one command; in CI it is a green
+        # check that has never once verified a number.
         _save_baseline_key("eval.gate_metrics", now)
-        return _finding("eval.gate_metrics", True, "low",
-                        f"baseline recorded ({len(now)} metrics) — drift checked from now on",
-                        json.dumps(now, indent=2), "python3 scripts/tune_threshold.py")
+        return _finding("eval.gate_metrics", False, "medium",
+                        "no baseline present — cannot check for drift",
+                        f"tools/bughunt/baseline.json is gitignored, so this "
+                        f"checkout had none. One was written locally just now "
+                        f"({len(now)} metrics) but a CI runner discards its "
+                        f"workspace, so the same thing happens on every future "
+                        f"run there. Commit tools/bughunt/baseline.json, or this "
+                        f"check can never compare anything in CI.\n"
+                        + json.dumps(now, indent=2),
+                        "python3 scripts/tune_threshold.py")
 
     drift = [f"{k}: {prior.get(k)} -> {now[k]}" for k in now
              if k in prior and prior[k] != now[k]]
@@ -404,6 +463,7 @@ ALL = [
     check_preflight,
     check_clean_clone_build,
     check_data_layer,
+    check_loop_e2e,
     check_abstention_contract,
     check_stuck_judge_rows,
     check_eval_quality,
@@ -423,6 +483,7 @@ def run_all(quick=False, only=None):
             "check_preflight": "env.preflight",
             "check_clean_clone_build": "build.clean_clone",
             "check_data_layer": "data.feedback_db",
+            "check_loop_e2e": "loop.e2e",
             "check_abstention_contract": "judge.abstention_contract",
             "check_stuck_judge_rows": "judge.stuck_rows",
             "check_eval_quality": "eval.gate_metrics",

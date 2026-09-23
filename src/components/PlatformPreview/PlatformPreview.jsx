@@ -162,19 +162,20 @@ export function PlatformPreview({ platform, content, imageUrl, linkUrl, onConten
     return (
         <div className="content-columns">
             <div className="content-editor">
-                <div className="form-group mb-0">
-                    <label>Generated Content</label>
-                    <textarea
-                        className="platform-output"
-                        value={content}
-                        onChange={(event) => onContentChange?.(event.target.value)}
-                        placeholder={`${platform} version will appear here...`}
-                    />
-                    <div className="char-counter">{content.length} characters</div>
+                <div className="section-row">
+                    <label className="section-label" htmlFor={`output-${platform}`}>Text</label>
+                    <span className="char-counter">{content.length.toLocaleString()} characters</span>
                 </div>
+                <textarea
+                    id={`output-${platform}`}
+                    className="platform-output"
+                    value={content}
+                    onChange={(event) => onContentChange?.(event.target.value)}
+                    placeholder={`${platform} version will appear here...`}
+                />
             </div>
             <div className="content-preview">
-                <label className="preview-label">Live Preview</label>
+                <span className="section-label">Preview</span>
                 <PreviewComponent
                     content={content || `Your generated ${platform} post will appear here...`}
                     imageUrl={imageUrl}
@@ -182,7 +183,7 @@ export function PlatformPreview({ platform, content, imageUrl, linkUrl, onConten
                 />
                 {onCopy && (
                     <Button variant="secondary" size="small" onClick={onCopy} className="preview-copy-button">
-                        📋 Copy
+                        Copy
                     </Button>
                 )}
             </div>

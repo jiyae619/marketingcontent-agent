@@ -253,12 +253,21 @@ def judge(content, platform, *, model=None, generator_model=None, source_brief=N
     # Caught live: a real verdict scored hallucination=0 and ai_slop=0, both with
     # reason="", while overall stayed at 90 — nothing checked that overall agreed
     # with what it was supposedly built from.
+    # The missing-category half of this was inverted and never fired: the old
+    # `... if isinstance(entry, dict) else True` made a NON-dict entry (absent, or
+    # a bare number) evaluate to True, and `not True` then excluded that category
+    # from `unreasoned` — the opposite of what the comment above promises. A local
+    # json_mode verdict omitting `kr_en_register` entirely was persisted as
+    # `graded`. Written out longhand because the inline conditional is what hid it.
     scores = verdict["scores"] if isinstance(verdict["scores"], dict) else {}
-    unreasoned = sorted(
-        cat for cat in FLAG_TAXONOMY
-        if not (scores.get(cat).get("reason", "").strip()
-                if isinstance(scores.get(cat), dict) else True)
-    )
+
+    def _is_unreasoned(cat):
+        entry = scores.get(cat)
+        if not isinstance(entry, dict):
+            return True   # absent, or not an object — there is no reasoning to read
+        return not entry.get("reason", "").strip()
+
+    unreasoned = sorted(cat for cat in FLAG_TAXONOMY if _is_unreasoned(cat))
     if unreasoned:
         verdict["abstained"] = True
         verdict["confidence"] = "low"

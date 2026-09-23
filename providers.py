@@ -93,7 +93,7 @@ def _post_json(url: str, payload: dict, headers: dict, timeout: int = 60):
 
 
 def call_gemini(prompt: str, model: str = "gemini-2.5-flash", system: str = None,
-                json_schema: dict = None) -> dict:
+                json_schema: dict = None, temperature: float = None) -> dict:
     # Single choke point for billing: every paid path goes through here.
     if local_only():
         return _refused(model)
@@ -109,6 +109,8 @@ def call_gemini(prompt: str, model: str = "gemini-2.5-flash", system: str = None
             prompt = f"{system}\n\n{prompt}"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
         gen_cfg = {"thinkingConfig": {"thinkingBudget": 0}}
+        if temperature is not None:
+            gen_cfg["temperature"] = temperature
         if json_schema:
             gen_cfg["responseMimeType"] = "application/json"
             gen_cfg["responseSchema"] = _gemini_schema(json_schema)
@@ -136,7 +138,7 @@ def call_gemini(prompt: str, model: str = "gemini-2.5-flash", system: str = None
 
 
 def call_openai(prompt: str, model: str = "gpt-4o-mini", system: str = None,
-                json_schema: dict = None) -> dict:
+                json_schema: dict = None, temperature: float = None) -> dict:
     # Single choke point for billing: every paid path goes through here.
     if local_only():
         return _refused(model)
@@ -147,6 +149,8 @@ def call_openai(prompt: str, model: str = "gpt-4o-mini", system: str = None,
     msgs = ([{"role": "system", "content": system}] if system else []) + \
            [{"role": "user", "content": prompt}]
     payload = {"model": model, "messages": msgs}
+    if temperature is not None:
+        payload["temperature"] = temperature
     if json_schema:
         payload["response_format"] = {
             "type": "json_schema",
@@ -192,7 +196,8 @@ ANTHROPIC_MAX_TOKENS = 8192
 
 
 def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001",
-                   system: str = None, json_schema: dict = None) -> dict:
+                   system: str = None, json_schema: dict = None,
+                   temperature: float = None) -> dict:
     # Single choke point for billing: every paid path goes through here.
     if local_only():
         return _refused(model)
@@ -211,6 +216,8 @@ def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001",
     }
     if system:
         payload["system"] = system
+    if temperature is not None:
+        payload["temperature"] = temperature
     if json_schema:
         # Structured outputs. Supported on Haiku 4.5, Sonnet 5, Opus 5 (and Opus 4.5 /
         # 4.1). NOT verified against claude-sonnet-4-6 — if that model 400s on
@@ -253,8 +260,51 @@ def call_anthropic(prompt: str, model: str = "claude-haiku-4-5-20251001",
         return _empty_result(model, f"Anthropic error: {e}")
 
 
+def _ollama_root(base: str) -> str:
+    """Ollama's native API root, given the OpenAI-compatible base URL."""
+    b = base.rstrip("/")
+    return b[:-3] if b.endswith("/v1") else b
+
+
+def _evict_others(base: str, keep: str) -> None:
+    """Unload every resident local model except `keep`.
+
+    The gate above fixed CONTENTION; it did not fix RESIDENCY. Ollama holds a
+    model's weights for 5 minutes after the call that loaded them, so a
+    generate -> judge handoff leaves gemma3:4b (4.1GB) and llama3.2:3b (2.2GB)
+    resident at the same time on an 8GB machine — measured: six generations and
+    six judgings interleaved inside 90 seconds, well inside one keep_alive
+    window. Ollama then saw available="1.2 GiB", logged `offloaded 0/35 layers
+    to GPU`, and ran the generator on CPU at 0.28 tok/s, which cannot finish a
+    post inside the 120s timeout below. CLAUDE.md already says two models cannot
+    co-reside; until now nothing enforced it.
+
+    Ollama-specific and best-effort by design. call_local is documented to work
+    against LM Studio / llama.cpp / vLLM too, so every failure here is swallowed:
+    a server with no /api/ps just keeps its own residency policy, unchanged.
+    """
+    root = _ollama_root(base)
+    try:
+        with urllib.request.urlopen(root + "/api/ps", timeout=5) as r:
+            loaded = json.loads(r.read().decode()).get("models") or []
+    except Exception:
+        return
+    for m in loaded:
+        name = m.get("name") or m.get("model")
+        if not name or name == keep:
+            continue
+        try:
+            # keep_alive 0 with no prompt is Ollama's unload; it returns
+            # done_reason "unload" without running the model.
+            _post_json(root + "/api/generate", {"model": name, "keep_alive": 0},
+                       headers={}, timeout=20)
+        except Exception:
+            pass
+
+
 def call_local(prompt: str, model: str = None, json_mode: bool = False,
-               system: str = None, json_schema: dict = None) -> dict:
+               system: str = None, json_schema: dict = None,
+               temperature: float = None, max_tokens: int = None) -> dict:
     """Call a locally-run LLM via an OpenAI-compatible endpoint.
 
     Works with Ollama, LM Studio, llama.cpp server, vLLM, etc. — anything that
@@ -276,6 +326,17 @@ def call_local(prompt: str, model: str = None, json_mode: bool = False,
     msgs = ([{"role": "system", "content": system}] if system else []) + \
            [{"role": "user", "content": prompt}]
     payload = {"model": model, "messages": msgs}
+    # Sampling is left to the server's default unless a caller asks, EXCEPT that a
+    # caller comparing two prompts has to pin it: at the default temperature the
+    # difference between two runs is mostly sampling noise, so a regression gate
+    # would be measuring the sampler rather than the change it is meant to catch.
+    if temperature is not None:
+        payload["temperature"] = temperature
+    # A small model can fall into a repetition loop and generate until the
+    # context fills — measured on x: 300 tokens of one sentence repeated, then
+    # a 300s timeout. A ceiling turns that hang into a fast, visible failure.
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     if json_schema:
         # Schema beats bare json_object: it constrains the SHAPE, not just the syntax.
         # A small model can emit perfectly valid JSON with none of the keys we read.
@@ -291,11 +352,24 @@ def call_local(prompt: str, model: str = None, json_mode: bool = False,
         payload["response_format"] = {"type": "json_object"}
     try:
         with _LOCAL_CALL_GATE:
+            _evict_others(base, model)
             data = _post_json(
                 base.rstrip("/") + "/chat/completions",
                 payload,
                 headers={"Authorization": f"Bearer {key}"},
-                timeout=120,  # local models can be slower than hosted APIs
+                # 120s measured too tight, then 240s still not always enough:
+                # _LOCAL_CALL_GATE is a single global semaphore, so a UI that
+                # fires all six channels in parallel queues every call behind
+                # it, and on an 8GB machine under that load (measured: ~78MB
+                # free, model fully evicted between calls by the 30s
+                # OLLAMA_KEEP_ALIVE) a call queued last can still run long once
+                # it finally starts. 300s is not a promise of speed, only room
+                # for the tail of a six-way batch — a batch that still
+                # occasionally loses its last call is a hardware/concurrency
+                # ceiling this number alone cannot fully absorb; see the fix
+                # commit for what would (staggering or serializing the
+                # frontend's requests instead of firing all six at once).
+                timeout=300,
             )
         choice = (data.get("choices") or [{}])[0]
         text = choice.get("message", {}).get("content", "")
