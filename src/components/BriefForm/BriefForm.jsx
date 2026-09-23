@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 
+const PRICE_LABEL = { unset: 'Not stated', free: 'Free', paid: 'Paid' };
+
 /**
  * The typed brief form.
  *
@@ -59,7 +61,7 @@ export function BriefForm({ values, onChange, errors = {}, disabled }) {
         } else if (f.name === 'price_kind') {
             control = (
                 <select id={id} value={values.price_kind || 'unset'} onChange={set('price_kind')} disabled={disabled}>
-                    {spec.price_kinds.map((k) => <option key={k} value={k}>{k}</option>)}
+                    {spec.price_kinds.map((k) => <option key={k} value={k}>{PRICE_LABEL[k] || k}</option>)}
                 </select>
             );
         } else if (f.name === 'currency') {

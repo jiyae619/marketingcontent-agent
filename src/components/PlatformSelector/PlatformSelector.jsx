@@ -5,12 +5,12 @@ const platforms = [
     { id: 'linkedin', label: 'LinkedIn' },
     { id: 'instagram', label: 'Instagram' },
     { id: 'circle', label: 'CIRCLE' },
-    { id: 'kakaotalk', label: 'Kakaotalk' },
+    { id: 'kakaotalk', label: 'KakaoTalk' },
     { id: 'whatsapp', label: 'WhatsApp' },
     { id: 'x', label: 'X' },
 ];
 
-export function PlatformSelector({ selectedPlatforms = [], onChange }) {
+export function PlatformSelector({ selectedPlatforms = [], onChange, disabled = false }) {
     const handleChange = (platformId) => {
         const newSelected = selectedPlatforms.includes(platformId)
             ? selectedPlatforms.filter(id => id !== platformId)
@@ -18,9 +18,20 @@ export function PlatformSelector({ selectedPlatforms = [], onChange }) {
         onChange?.(newSelected);
     };
 
+    const allOn = selectedPlatforms.length === platforms.length;
+
     return (
-        <div className="platform-selector">
-            <label className="selector-label">Select Platforms:</label>
+        <fieldset className="platform-selector" disabled={disabled}>
+            <div className="selector-head">
+                <legend className="selector-label">Channels</legend>
+                <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => onChange?.(allOn ? [] : platforms.map((p) => p.id))}
+                >
+                    {allOn ? 'Clear' : 'Select all'}
+                </button>
+            </div>
             <div className="platform-checkboxes">
                 {platforms.map(platform => (
                     <label
@@ -32,19 +43,19 @@ export function PlatformSelector({ selectedPlatforms = [], onChange }) {
                             checked={selectedPlatforms.includes(platform.id)}
                             onChange={() => handleChange(platform.id)}
                         />
-                        <span className="checkbox-label">
-                            <span className="platform-name">{platform.label}</span>
-                        </span>
+                        <span className={`dot dot--${platform.id}`} aria-hidden="true" />
+                        <span className="platform-name">{platform.label}</span>
                     </label>
                 ))}
             </div>
-        </div>
+        </fieldset>
     );
 }
 
 PlatformSelector.propTypes = {
     selectedPlatforms: PropTypes.arrayOf(PropTypes.string),
     onChange: PropTypes.func,
+    disabled: PropTypes.bool,
 };
 
 // Wrapper component for stories

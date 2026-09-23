@@ -3,6 +3,12 @@ import PropTypes from 'prop-types';
 import { Button } from '../Button/Button';
 import './ReviewPanel.css';
 
+// Taxonomy keys are snake_case identifiers; these are the few that don't read
+// correctly with a plain first-letter capital.
+const CHIP_LABEL = { ai_slop: 'AI slop', kr_en_register: 'KR/EN mix' };
+const chipLabel = (key) =>
+  CHIP_LABEL[key] || key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' ');
+
 const FAMILY_LEAD = {
   voice: 'Reads wrong',
   grounding: 'Facts wrong',
@@ -63,7 +69,7 @@ export function ReviewPanel({ platform, content, generationId, onStatus }) {
     }
   };
 
-  const okMsg = (v) => (v === 'edit' ? `✓ Saved your edit for ${platform}` : `✓ Approved ${platform}`);
+  const okMsg = (v) => (v === 'edit' ? `Edit saved for ${platform}.` : `Approved ${platform}.`);
 
   const approve = async () => {
     // An edit is classified SERVER-side (it compares against the stored original,
@@ -106,14 +112,13 @@ export function ReviewPanel({ platform, content, generationId, onStatus }) {
   return (
     <div className="review-panel">
       <div className="rp-actions">
-        <Button variant="primary" size="small" onClick={approve}>✓ Approve &amp; copy</Button>
+        <Button variant="primary" size="small" onClick={approve}>Approve &amp; copy</Button>
         <Button variant="secondary" size="small"
                 onClick={() => setReview((r) => (r ? null : { mode: 'reject' }))}>
-          ✕ Reject &amp; flag
+          Reject &amp; flag
         </Button>
         <span className="rp-actions-spacer" />
         {verdict && <span className={`rp-verdict rp-verdict-${verdict}`}>Recorded: {verdict}</span>}
-        <span className="rp-later">on approve → schedule / publish (later)</span>
       </div>
 
       {review && (
@@ -143,7 +148,7 @@ export function ReviewPanel({ platform, content, generationId, onStatus }) {
                               className={`rp-chip rp-chip-${f.family}${on ? ' rp-chip-on' : ''}`}
                               onClick={() => toggle(f.category)}>
                         <span className="rp-chip-check" aria-hidden="true">{on ? '✓' : ''}</span>
-                        {f.category.replace(/_/g, ' ')}
+                        {chipLabel(f.category)}
                       </button>
                     );
                   })}
@@ -159,9 +164,9 @@ export function ReviewPanel({ platform, content, generationId, onStatus }) {
               ? <span className="rp-picked-none">No reasons selected yet</span>
               : picked.map((c) => (
                   <span key={c} className="rp-picked-tag">
-                    {c.replace(/_/g, ' ')}
+                    {chipLabel(c)}
                     <button type="button" className="rp-picked-x"
-                            aria-label={`Remove ${c}`} onClick={() => toggle(c)}>×</button>
+                            aria-label={`Remove ${chipLabel(c)}`} onClick={() => toggle(c)}>×</button>
                   </span>
                 ))}
           </div>
