@@ -174,6 +174,12 @@ def main():
     out, _ = scrub_prose({"hook": "세미나에 오세요.", "body": [], "cta": "오늘 바로 신청하세요!"}, KO)
     check("'오늘 신청' in the cta survives", out["cta"] == "오늘 바로 신청하세요!", out)
 
+    withmap = {**KO, "map_url": "https://www.google.com/maps/search/?api=1&query=Seattle+University",
+               "link": "https://pknic.org/events/career-1024"}
+    out, _ = scrub_prose({"hook": "오직 1가지! 박운영의 전략을 알아보세요.", "body": [], "cta": "x"}, withmap)
+    check("a number that only appears inside a URL is not grounded",
+          "1가지" not in out["hook"] and "박운영의 전략" in out["hook"], out)
+
     out, fl = scrub_prose({"hook": "A seminar on resume review with 박운영 at Seattle University.",
                            "body": ["Doors open on Oct 15, 2026."], "cta": "Sign up."}, EN)
     check("prose that repeats a TRUE fact is left alone",

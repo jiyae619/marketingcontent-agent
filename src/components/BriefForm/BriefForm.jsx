@@ -85,9 +85,14 @@ export function BriefForm({ values, onChange, errors = {}, disabled }) {
                     id={id} rows={3} disabled={disabled}
                     className="content-input"
                     placeholder={ko ? '한 줄에 하나씩' : 'One per line'}
-                    value={(values.topics || []).join('\n')}
+                    value={values.topics_text ?? (values.topics || []).join('\n')}
                     onChange={(e) => onChange({
                         ...values,
+                        // The raw text is kept as typed. Re-deriving the box from the
+                        // parsed list trimmed every keystroke, so a space or a new line
+                        // vanished the moment it was typed and the whole agenda
+                        // collapsed into one topic. Only the parsed list is sent.
+                        topics_text: e.target.value,
                         topics: e.target.value.split('\n').map((s) => s.trim()).filter(Boolean),
                     })}
                 />

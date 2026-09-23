@@ -427,7 +427,11 @@ _PRICE = re.compile(r"\bfree\b|\$|₩|무료|\d+ ?원", re.I)
 
 
 def _grounded_text(facts):
-    parts = [str(v) for k, v in facts.items() if v and k != "topics"]
+    # Links are addresses, not claims: the derived map URL carries "api=1", which
+    # made "1" a grounded number and let "오직 1가지!" (an invented "just one
+    # thing!") through the number check.
+    parts = [str(v) for k, v in facts.items()
+             if v and k not in ("topics", "link", "map_url")]
     parts += [str(t) for t in (facts.get("topics") or [])]
     ev = facts.get("event_type")
     if ev in EVENT_TYPES:

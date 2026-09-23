@@ -94,7 +94,7 @@ export function ReviewPanel({ platform, content, generationId, onStatus }) {
             flag_categories: picked, edit_note: note || undefined }
         : { platform, verdict: 'reject', generation_id: generationId,
             flag_categories: picked, edit_note: note || undefined },
-      isEdit ? okMsg : () => `Rejected ${platform}${picked.length ? ` — ${picked.length} reason(s)` : ''}`,
+      isEdit ? okMsg : () => `Flag recorded${picked.length ? ` — ${picked.length} reason${picked.length === 1 ? '' : 's'}` : ''}.`,
     );
     if (!ok) return;
     close();
