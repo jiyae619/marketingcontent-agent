@@ -277,6 +277,20 @@ def test_e6_grounding_guard():
     check("placeholder stripped AND flagged",
           "[링크]" not in got and any(k == "placeholder" for k, _ in flags))
 
+    # A real shipped defect: after the fact/prose split started WITHHOLDING
+    # date/time from the model (schema_gen.py), it sometimes fell back to a
+    # mail-merge-style "[date]" / "[time]" slot instead of a value — and
+    # neither English word was in the placeholder pattern, so this scored
+    # clean and shipped. Caught by generating a live sample through the
+    # review UI, not by a unit test — this is the regression that keeps it
+    # caught next time.
+    src = "Join us for a coaching session with 박운영 on [date] at [time]."
+    got, flags = strip_ungrounded(src, brief)
+    check("english [date]/[time] placeholder stripped AND flagged",
+          "[date]" not in got and "[time]" not in got
+          and sorted(t for k, t in flags if k == "placeholder") == ["[date]", "[time]"],
+          f"got {got!r} flags={flags!r}")
+
     # A restyle noun is flagged, never cut: removing it breaks the sentence.
     src = "세미나 주제는 커리어 레쥬메입니다."
     got, flags = strip_ungrounded(src, brief)

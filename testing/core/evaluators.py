@@ -139,9 +139,15 @@ _DAY_NAMES = (r"monday|tuesday|wednesday|thursday|friday|saturday|sunday"
 _WEEKDAY_PAREN = re.compile(r"\s*[（(]\s*(?P<day>[월화수목금토일]|(?i:" + _DAY_NAMES + r"))\s*[)）]")
 _WEEKDAY_KO    = re.compile(r"\s*(?P<day>[월화수목금토일]요일)")
 _WEEKDAY_EN    = re.compile(r"(?i:\s*\bon\s+)?(?P<day>(?i:\b(?:" + _DAY_NAMES + r")\b))")
+# "date"/"time" added after the fact/prose split started WITHHOLDING those
+# fields from the model (schema_gen.py): a model no longer given a value to
+# restate sometimes falls back to a mail-merge-style "[date]" / "[time]" slot
+# instead, and neither word was in this list — a real one shipped unflagged:
+# "coaching session with 박운영 on [date] at [time]." scored clean. Case-
+# insensitive on the whole pattern now rather than listing both cases by hand.
 _PLACEHOLDER   = re.compile(r"[ \t]*[\[［][ \t]*[^\]］\n]{0,30}?"
-                            r"(?:링크|주소|날짜|장소|시간|가격|Link|link|URL|url|Insert|insert|form)"
-                            r"[^\]］\n]{0,30}?[ \t]*[\]］]")
+                            r"(?:링크|주소|날짜|장소|시간|가격|link|url|insert|form|date|time)"
+                            r"[^\]］\n]{0,30}?[ \t]*[\]］]", re.I)
 
 # Restyle nouns, both scripts. Flagged, never deleted.
 _RESTYLE = ("세미나", "워크샵", "워크숍", "마스터클래스", "특강", "강연", "컨퍼런스",
