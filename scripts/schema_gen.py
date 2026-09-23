@@ -42,26 +42,40 @@ from prototype_schema_gen import (BRIEF, FACTS_SCHEMA, EXTRACT_SYS,  # noqa: E40
 # stays the same everywhere and only the template differs. `bullets` False means the
 # facts are folded into one line — KakaoTalk and WhatsApp are chat, not posters.
 CHANNELS = {
-    "linkedin":  dict(body=3, bullets=True,  tags=(3, 5), sentences=None),
-    "instagram": dict(body=2, bullets=True,  tags=(3, 5), sentences=None),
+    "linkedin":  dict(body=3, bullets=True,  tags=(3, 5), sentences=None,
+                      details="labels", marker="•", links="full", header=True),
+    "instagram": dict(body=2, bullets=True,  tags=(3, 5), sentences=None,
+                      details="emoji", links="bio", header=False),
     "circle":    dict(body=4, bullets=True,  tags=(0, 0), sentences=None,
-                      para=200, header=True),
+                      para=200, details="labels", marker="•", links="full", header=True),
     "kakaotalk": dict(body=1, bullets=False, tags=(0, 0), sentences=3,
-                      prose_max=180, total_max=320),
+                      prose_max=180, total_max=320,
+                      details="labels", marker="▶", links="full", header=True),
     "whatsapp":  dict(body=1, bullets=False, tags=(0, 0), sentences=4,
-                      prose_max=180, total_max=320),
-    "x":         dict(body=1, bullets=False, tags=(2, 3), sentences=None, cap=280),
+                      prose_max=180, total_max=320,
+                      details="labels", marker="•", links="full", header=True),
+    # body=0: X's layout never shows one, and asking for it was where
+    # hyperclovax fell into a repetition loop ("Sign up now and get a free
+    # resource book…" × N) that ran to the timeout three runs in a row.
+    "x":         dict(body=0, bullets=False, tags=(2, 3), sentences=None, cap=280,
+                      prose_max=140,
+                      details="emoji", links="inline", header=False),
 }
 
-LABELS_KO = {"date": "일시", "time": "시간", "location": "장소", "map_url": "지도",
-             "person": "연사", "price": "참가비", "topics": "주제", "link": "링크"}
-LABELS_EN = {"date": "Date", "time": "Time", "location": "Location", "map_url": "Map",
-             "person": "Speaker", "price": "Price", "topics": "Topics", "link": "Link"}
-LABELS_KO["event_type"] = "행사"
-LABELS_EN["event_type"] = "Event"
-# A standalone label line ending in a colon — what has_headers() actually accepts.
-# docs/circle.md line 33 used to say "##" here, which strip_markdown() then deleted.
-HEADER_KO, HEADER_EN = "행사 안내:", "Event details:"
+# Reader-facing labels. Date and time share one "When" line — a reader asks
+# "when is it", not "what date" then "what time" — and topics sit under ONE
+# heading instead of repeating "Topics:" on every item.
+LABELS_EN = {"when": "When", "where": "Where", "person": "Speaker", "price": "Price",
+             "topics": "What we'll cover", "register": "Register", "map": "Map",
+             "details": "{} details", "details_plain": "Event details",
+             "bio": "Link in bio to register"}
+LABELS_KO = {"when": "일시", "where": "장소", "person": "연사", "price": "참가비",
+             "topics": "주제", "register": "신청", "map": "지도",
+             "details": "{} 안내", "details_plain": "행사 안내",
+             "bio": "신청은 프로필 링크에서"}
+# Emoji-led lines are how Instagram and X readers expect logistics; each is
+# still a structured line (has_structured_lines accepts an emoji lead).
+EMOJI = {"when": "🗓", "where": "📍", "person": "🎤"}
 
 # --- event type as an enum -------------------------------------------------
 # `restyle` (a briefed "coaching session" shipping as 세미나 / 워크샵 / 마스터클래스)
@@ -74,7 +88,7 @@ HEADER_KO, HEADER_EN = "행사 안내:", "Event details:"
 # Trimmed from 9 keys to 3 on request — the smaller the enum, the less a
 # reviewer has to think about before picking one. A brief that doesn't match
 # any alias gets event_type=None, which is the SAME safe behavior as any other
-# unknown fact: fact_lines() omits the line rather than guessing a label.
+# unknown fact: detail_lines() omits the line rather than guessing a label.
 EVENT_TYPES = {
     "seminar":    ("Seminar", "세미나",
                    ["seminar", "세미나", "workshop", "워크숍", "워크샵", "talk",
@@ -161,9 +175,11 @@ def prose_system(platform, spec):
          "them, and never name a venue. Never write a URL, and never write a "
          "bracketed placeholder such as [link] or [링크] — the link is appended "
          "too. End the cta with a period, never a colon.",
-         f"hook: one complete sentence. body: {spec['body']} "
-         + (f"paragraph(s) of about {spec['para']} characters each. "
-            if spec.get("para") else "short paragraph(s). ")
+         "hook: one complete sentence. "
+         + ("body: return an empty list. " if not spec["body"] else
+            f"body: {spec['body']} "
+            + (f"paragraph(s) of about {spec['para']} characters each. "
+               if spec.get("para") else "short paragraph(s). "))
          + "cta: one sentence inviting the reader to register or reply."]
     lo, hi = spec["tags"]
     s.append(f"hashtags: {hi} tags, no '#'." if hi else "hashtags: return an empty list.")
@@ -206,45 +222,76 @@ def prose_schema(spec):
     return sc
 
 
-def fact_lines(facts, ko, spec):
-    """Emit one line per KNOWN fact. A null field emits nothing — which is where
-    '[Insert Price]' becomes unrepresentable: no branch writes a placeholder."""
+def detail_lines(facts, ko, spec, keys=("when", "where", "person", "price")):
+    """The logistics block, one line per KNOWN fact. A null field emits nothing —
+    which is where '[Insert Price]' stays unrepresentable: no branch writes a
+    placeholder."""
     L = LABELS_KO if ko else LABELS_EN
-    seen, out = [], []
-    ev = event_label(facts.get("event_type"), ko)
-    if ev:
-        seen.append(ev)
-        out.append(f"• {L['event_type']}: {ev}" if spec["bullets"]
-                   else f"{L['event_type']}: {ev}")
-    for k in ("date", "time", "location", "person", "price", "link"):
-        v = facts.get(k)
-        v = v.strip() if isinstance(v, str) else None
+    when = " · ".join(v.strip() for v in (facts.get("date"), facts.get("time"))
+                      if isinstance(v, str) and v.strip())
+    values = {"when": when,
+              "where": (facts.get("location") or "").strip(),
+              "person": (facts.get("person") or "").strip(),
+              "price": (facts.get("price") or "").strip()}
+    out = []
+    for k in keys:
+        v = values[k]
         if not v:
             continue
-        if k != "link" and any(v in e or e in v for e in seen):
-            continue
-        seen.append(v)
-        out.append(f"• {L[k]}: {v}" if spec["bullets"] else f"{L[k]}: {v}")
-    topics = [str(t).strip() for t in (facts.get("topics") or []) if str(t).strip()]
-    if topics:
-        out += ([f"• {L['topics']}: {t}" for t in topics] if spec["bullets"]
-                else [f"{L['topics']}: " + ", ".join(topics)])
+        if spec["details"] == "emoji":
+            if k == "price":
+                # Folded onto the date line rather than a 4th emoji — Instagram's
+                # scorer wants 1-3, and "free" is read together with "when".
+                if out and out[0].startswith(EMOJI["when"]):
+                    out[0] += f" · {v}"
+                continue
+            out.append(f"{EMOJI[k]} {v}")
+        else:
+            out.append(f"{spec['marker']} {L[k]}: {v}")
     return out
 
 
+def topic_lines(facts, ko, spec):
+    topics = [str(t).strip() for t in (facts.get("topics") or []) if str(t).strip()]
+    if not topics:
+        return []
+    L = LABELS_KO if ko else LABELS_EN
+    item = "•" if spec.get("marker", "•") == "•" else "-"
+    return [f"{L['topics']}:"] + [f"{item} {t}" for t in topics]
+
+
+def link_lines(facts, ko, spec):
+    L = LABELS_KO if ko else LABELS_EN
+    link = (facts.get("link") or "").strip()
+    map_url = (facts.get("map_url") or "").strip()
+    if spec["links"] == "bio":
+        # Instagram captions don't render links; a URL there is dead text.
+        return [L["bio"]] if link else []
+    if spec["links"] == "full":
+        return ([f"{L['register']}: {link}"] if link else []) + \
+               ([f"{L['map']}: {map_url}"] if map_url else [])
+    return []
+
+
 def _cap(s, n):
-    """Hard character cap, word-boundary where that doesn't lose too much."""
+    """Hard character cap at a word boundary, so nothing ships as 'this val'."""
     if not s or len(s) <= n:
         return s
     cut = s[:n]
     sp = cut.rfind(" ")
-    if sp > n * 0.6:
+    if sp > n * 0.5:
         cut = cut[:sp]
-    return cut.rstrip(" ,.!?、。") 
+    return cut.rstrip(" ,.!?、。:;—-") + "…"
 
 
-def assemble(platform, facts, prose):
-    spec = CHANNELS[platform]
+def _join(sections):
+    """Sections separated by a blank line, lines within a section by one newline.
+    The blank lines are the point: a phone reader scans blocks, not sentences."""
+    blocks = ["\n".join(l for l in sec if l) for sec in sections]
+    return "\n\n".join(b for b in blocks if b.strip())
+
+
+def _prose(prose, spec):
     cta = (prose.get("cta") or "").strip()
     # Stripping "[링크]" out of "지금 등록하세요: [링크]" leaves a sentence pointing at
     # nothing. The prompt now forbids the placeholder, but a prompt is a request,
@@ -254,69 +301,89 @@ def assemble(platform, facts, prose):
     # hyperclovax emitted the literal string "cta" as a body element, which shipped
     # into the post. A body paragraph that is just a schema key name is never prose.
     _KEYS = {"hook", "body", "cta", "hashtags"}
+    # A single-token "paragraph" ("clickHere", "cta") is decoder debris, never prose.
     body = [b.strip() for b in (prose.get("body") or [])
             if b.strip() and b.strip() != cta
-            and b.strip().strip("':\"").lower() not in _KEYS]
+            and b.strip().strip("':\"").lower() not in _KEYS
+            and len(b.split()) > 1]
+    # The model routinely ends the body with the same ask as the cta ("Register
+    # now to secure your spot…" twice, a few lines apart). A reader sees the
+    # repeat; drop a body paragraph that opens with the cta's first three words.
+    lead = " ".join(cta.lower().split()[:3])
+    if lead:
+        body = [b for b in body if not b.lower().startswith(lead)]
+    body = body[:spec["body"]]
     # Backstop for `prose_max`: the schema's maxLength (prose_schema()) is the
     # primary defense, but is only as real as the backend's grammar support.
-    # This guarantees the bound regardless — measured cause of the fix: a live
-    # whatsapp generation shipped 836 chars ("sentences: 4" bounds a COUNT, and a
-    # run-on sentence sails past it) against docs' own 300-char ceiling.
-    body = body[:spec["body"]]  # normalize BEFORE any budget math below
+    # Measured cause: a live whatsapp generation shipped 836 chars ("sentences: 4"
+    # bounds a COUNT, and a run-on sentence sails past it).
     if spec.get("prose_max"):
         m = spec["prose_max"]
-        hook = _cap(hook, m)
+        hook, cta = _cap(hook, m), _cap(cta, m)
         body = [_cap(b, m) for b in body]
-        cta = _cap(cta, m)
-    ko = is_korean(hook + " ".join(body))
-    facts_block = fact_lines(facts, ko, spec)
-
-    L = LABELS_KO if ko else LABELS_EN
-    map_url = (facts.get("map_url") or "").strip()
-    map_line = f"{L['map_url']}: {map_url}" if map_url else None
-    if spec["bullets"]:
-        head = ([HEADER_KO if ko else HEADER_EN] if spec.get("header") else [])
-        block = facts_block + ([f"• {map_line}"] if map_line else [])
-        parts = [hook, ""] + body[:spec["body"]] + [""] + head + block + ["", cta]
-    else:
-        # Chat channels: one compact line of facts, no poster layout. The map goes
-        # on its own line after the cta — a link is tapped, not read inline — and
-        # is dropped entirely where a character cap has to pay for it.
-        tail = [map_line] if (map_line and not spec.get("cap")) else []
-        parts = [hook] + body[:spec["body"]] + [" · ".join(facts_block), cta] + tail
     lo, hi = spec["tags"]
-    if hi:
-        tags = [t.lstrip("#").strip().replace(" ", "") for t in (prose.get("hashtags") or []) if t.strip()][:hi]
-        if len(tags) >= lo:
-            parts += ["", " ".join("#" + t for t in tags)]
-    text = "\n".join(p for p in parts if p is not None).strip()
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    if spec.get("cap"):
-        text = text[:spec["cap"]].rstrip()
-    elif spec.get("total_max") and len(text) > spec["total_max"]:
-        # hook, facts and map are load-bearing (opening line, grounded, a link)
-        # and are never touched here. body and cta are the elastic part, and
-        # BOTH have to be — one run shipped an empty body with all 440 chars
-        # front-loaded into hook+cta, so shrinking body alone left the total
-        # untouched. body goes first (it is pure "why attend" filler), then
-        # whatever budget remains goes to cta. Rebuilt rather than blindly
-        # sliced: `cap` (x) slices the WHOLE assembled string and is documented
-        # to cut mid-hashtag; this keeps hook/facts/map intact either way.
-        tags_line = (" ".join("#" + t for t in tags)
-                    if hi and len(tags) >= lo else None)
-        fixed_parts = [hook, " · ".join(facts_block)] + tail + \
-                     ([tags_line] if tags_line else [])
-        fixed_len = sum(len(p) + 1 for p in fixed_parts if p)  # +1 per newline joiner
-        elastic_budget = max(0, spec["total_max"] - fixed_len)
-        body_budget = min(elastic_budget, sum(len(b) for b in body))
-        body = [_cap(b, body_budget) for b in body] if body_budget else []
-        cta_budget = max(0, elastic_budget - sum(len(b) for b in body))
-        cta = _cap(cta, cta_budget)
-        parts = [hook] + body + [" · ".join(facts_block), cta] + tail
-        if tags_line:
-            parts += ["", tags_line]
-        text = "\n".join(p for p in parts if p is not None).strip()
-        text = re.sub(r"\n{3,}", "\n\n", text)
+    tags = [t.lstrip("#").strip().replace(" ", "")
+            for t in (prose.get("hashtags") or []) if t.strip()][:hi] if hi else []
+    tags_line = " ".join("#" + t for t in tags) if tags and len(tags) >= lo else ""
+    return hook, body, cta, tags_line
+
+
+def _assemble_x(facts, hook, body, cta, tags_line, ko, spec):
+    """X reads in one glance: hook, when, where, the ask. Built by PRIORITY under
+    the 280 cap instead of slicing a long draft — slicing is what shipped
+    'Don't miss out on this val' with no date or place at all."""
+    link = (facts.get("link") or "").strip()
+    details = detail_lines(facts, ko, spec, keys=("when", "where", "price"))
+    ask = " ".join(x for x in (cta, link) if x)
+    cap = spec["cap"]
+    # Drop the least essential piece first until it fits.
+    for sections in (
+        [[hook], details, [ask], [tags_line]],
+        [[hook], details, [ask]],
+        [[hook], details, [link]],
+        [[hook], details],
+        [[hook], details[:1]],
+    ):
+        text = _join(sections)
+        if len(text) <= cap:
+            return text
+    rest = _join([details[:1]])
+    return _join([[_cap(hook, cap - len(rest) - 2)], details[:1]])
+
+
+def assemble(platform, facts, prose):
+    spec = CHANNELS[platform]
+    hook, body, cta, tags_line = _prose(prose, spec)
+    ko = is_korean(hook + " ".join(body))
+    L = LABELS_KO if ko else LABELS_EN
+
+    if platform == "x":
+        return _assemble_x(facts, hook, body, cta, tags_line, ko, spec)
+
+    ev = event_label(facts.get("event_type"), ko)
+    header = []
+    if spec.get("header"):
+        # Ends in a colon: that is what has_headers() reads as a section header,
+        # and it is where the code-written event type lands.
+        header = [(L["details"].format(ev) if ev else L["details_plain"]) + ":"]
+
+    details = header + detail_lines(facts, ko, spec)
+    topics = topic_lines(facts, ko, spec)
+    closing = [cta] + link_lines(facts, ko, spec)
+
+    def build(body_paras):
+        return _join([[hook]] + [[b] for b in body_paras]
+                     + [details, topics, closing, [tags_line]])
+
+    text = build(body)
+    if spec.get("total_max") and len(text) > spec["total_max"] and body:
+        # Only the body is elastic. hook, facts, topics, cta and links are what
+        # a chat reader acts on; the body is "why attend" colour. Trim it to the
+        # remaining budget, or drop it — never the logistics.
+        fixed = len(build([])) + 2
+        budget = spec["total_max"] - fixed
+        body = [_cap(body[0], budget)] if budget > 40 else []
+        text = build(body)
     return text
 
 
@@ -368,6 +435,12 @@ def facts_from_fields(payload, ko):
     facts = canonicalize(facts)
     grounded = "\n".join(str(v) for v in facts.values() if v and not isinstance(v, list))
     grounded += "\n" + "\n".join(facts.get("topics") or [])
+    # canonicalize() turned the event type into an enum KEY ("seminar"), so the
+    # displayed label ("세미나" / "Seminar") was absent from this string and the
+    # restyle guard flagged the event's own name on every channel.
+    ev = facts.get("event_type")
+    if ev in EVENT_TYPES:
+        grounded += "\n" + "\n".join(EVENT_TYPES[ev][:2])
     return facts, grounded, {}
 
 

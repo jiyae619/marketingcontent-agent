@@ -304,7 +304,7 @@ def _evict_others(base: str, keep: str) -> None:
 
 def call_local(prompt: str, model: str = None, json_mode: bool = False,
                system: str = None, json_schema: dict = None,
-               temperature: float = None) -> dict:
+               temperature: float = None, max_tokens: int = None) -> dict:
     """Call a locally-run LLM via an OpenAI-compatible endpoint.
 
     Works with Ollama, LM Studio, llama.cpp server, vLLM, etc. — anything that
@@ -332,6 +332,11 @@ def call_local(prompt: str, model: str = None, json_mode: bool = False,
     # would be measuring the sampler rather than the change it is meant to catch.
     if temperature is not None:
         payload["temperature"] = temperature
+    # A small model can fall into a repetition loop and generate until the
+    # context fills — measured on x: 300 tokens of one sentence repeated, then
+    # a 300s timeout. A ceiling turns that hang into a fast, visible failure.
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
     if json_schema:
         # Schema beats bare json_object: it constrains the SHAPE, not just the syntax.
         # A small model can emit perfectly valid JSON with none of the keys we read.

@@ -173,8 +173,11 @@ def ground_facts(facts, brief):
 
 
 def call(model_id, system, prompt, schema):
+    # 900 tokens is ~2x the longest real prose response (circle, Korean); it
+    # only bites when the model is looping.
     r = providers.call_local(prompt, model=model_id, system=system,
-                             json_schema=schema, json_mode=True, temperature=0)
+                             json_schema=schema, json_mode=True, temperature=0,
+                             max_tokens=900)
     if not r.get("ok"):
         return None, r.get("error")
     t = (r.get("text") or "").strip()
