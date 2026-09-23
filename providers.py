@@ -352,7 +352,19 @@ def call_local(prompt: str, model: str = None, json_mode: bool = False,
                 base.rstrip("/") + "/chat/completions",
                 payload,
                 headers={"Authorization": f"Bearer {key}"},
-                timeout=120,  # local models can be slower than hosted APIs
+                # 120s measured too tight, then 240s still not always enough:
+                # _LOCAL_CALL_GATE is a single global semaphore, so a UI that
+                # fires all six channels in parallel queues every call behind
+                # it, and on an 8GB machine under that load (measured: ~78MB
+                # free, model fully evicted between calls by the 30s
+                # OLLAMA_KEEP_ALIVE) a call queued last can still run long once
+                # it finally starts. 300s is not a promise of speed, only room
+                # for the tail of a six-way batch — a batch that still
+                # occasionally loses its last call is a hardware/concurrency
+                # ceiling this number alone cannot fully absorb; see the fix
+                # commit for what would (staggering or serializing the
+                # frontend's requests instead of firing all six at once).
+                timeout=300,
             )
         choice = (data.get("choices") or [{}])[0]
         text = choice.get("message", {}).get("content", "")

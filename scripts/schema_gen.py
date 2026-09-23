@@ -46,8 +46,10 @@ CHANNELS = {
     "instagram": dict(body=2, bullets=True,  tags=(3, 5), sentences=None),
     "circle":    dict(body=4, bullets=True,  tags=(0, 0), sentences=None,
                       para=200, header=True),
-    "kakaotalk": dict(body=1, bullets=False, tags=(0, 0), sentences=3),
-    "whatsapp":  dict(body=1, bullets=False, tags=(0, 0), sentences=4),
+    "kakaotalk": dict(body=1, bullets=False, tags=(0, 0), sentences=3,
+                      prose_max=180, total_max=320),
+    "whatsapp":  dict(body=1, bullets=False, tags=(0, 0), sentences=4,
+                      prose_max=180, total_max=320),
     "x":         dict(body=1, bullets=False, tags=(2, 3), sentences=None, cap=280),
 }
 
@@ -69,25 +71,19 @@ HEADER_KO, HEADER_EN = "행사 안내:", "Event details:"
 # Same move as date and location — the model is never asked to produce the value.
 #
 # Aliases are matched longest-first so "info session" does not resolve via "session".
+# Trimmed from 9 keys to 3 on request — the smaller the enum, the less a
+# reviewer has to think about before picking one. A brief that doesn't match
+# any alias gets event_type=None, which is the SAME safe behavior as any other
+# unknown fact: fact_lines() omits the line rather than guessing a label.
 EVENT_TYPES = {
-    "coaching":   ("Coaching session", "코칭 세션",
-                   ["coaching session", "coaching", "1:1", "코칭", "멘토링", "mentoring"]),
-    "info":       ("Info session", "설명회",
-                   ["info session", "information session", "설명회", "오리엔테이션"]),
-    "workshop":   ("Workshop", "워크숍",
-                   ["workshop", "워크숍", "워크샵", "실습"]),
     "seminar":    ("Seminar", "세미나",
-                   ["seminar", "세미나"]),
+                   ["seminar", "세미나", "workshop", "워크숍", "워크샵", "talk",
+                    "강연", "특강", "coaching", "코칭", "info session", "설명회"]),
     "webinar":    ("Webinar", "웨비나",
-                   ["webinar", "웨비나", "온라인 세미나"]),
-    "talk":       ("Talk", "강연",
-                   ["fireside chat", "guest talk", "lecture", "강연", "특강", "talk"]),
-    "meetup":     ("Meetup", "모임",
-                   ["networking", "meetup", "meet-up", "네트워킹", "모임"]),
+                   ["webinar", "웨비나", "online seminar", "온라인 세미나"]),
     "conference": ("Conference", "컨퍼런스",
-                   ["conference", "summit", "컨퍼런스", "콘퍼런스"]),
-    "class":      ("Class", "클래스",
-                   ["masterclass", "course", "class", "마스터클래스", "클래스", "수업"]),
+                   ["conference", "summit", "컨퍼런스", "콘퍼런스", "meetup",
+                    "networking", "네트워킹", "모임"]),
 }
 _ALIASES = sorted(((a, k) for k, (_, _, al) in EVENT_TYPES.items() for a in al),
                   key=lambda x: -len(x[0]))
@@ -173,6 +169,9 @@ def prose_system(platform, spec):
     s.append(f"hashtags: {hi} tags, no '#'." if hi else "hashtags: return an empty list.")
     if spec.get("sentences"):
         s.append(f"Keep the whole thing under {spec['sentences']} sentences.")
+    if spec.get("prose_max"):
+        s.append(f"Keep each of hook, body and cta under {spec['prose_max']} "
+                 "characters — short messages, not paragraphs.")
     if spec.get("cap"):
         s.append(f"Keep the whole thing under {spec['cap']} characters.")
     s.append("Write in the SAME language as the facts. Keep names, venues and "
@@ -186,10 +185,22 @@ def prose_schema(spec):
     Only the CAPS are bound. minItems=4 on body was measured forcing
     hyperclovax:1.5b into filler entries ("click: [") rather than more prose —
     constrained decoding makes a shape reachable, not a capability appear.
+
+    `prose_max`, when a channel sets it, bounds hook/body-item/cta length too.
+    Added after a live whatsapp generation shipped 836 characters against docs'
+    own 50-150 ideal / 300 acceptable ceiling — "sentences: 4" bounds sentence
+    COUNT, not length, and a run-on sentence sails straight past it. maxLength
+    is enforced by the decoder's grammar, the same mechanism that already makes
+    minItems/maxItems real rather than a request.
     """
     sc = json.loads(json.dumps(PROSE_SCHEMA))
     n = spec["body"]
     sc["properties"]["body"].update(maxItems=n)
+    if spec.get("prose_max"):
+        m = spec["prose_max"]
+        sc["properties"]["hook"]["maxLength"] = m
+        sc["properties"]["body"]["items"]["maxLength"] = m
+        sc["properties"]["cta"]["maxLength"] = m
     lo, hi = spec["tags"]
     sc["properties"]["hashtags"].update(minItems=lo, maxItems=hi)
     return sc
@@ -221,6 +232,17 @@ def fact_lines(facts, ko, spec):
     return out
 
 
+def _cap(s, n):
+    """Hard character cap, word-boundary where that doesn't lose too much."""
+    if not s or len(s) <= n:
+        return s
+    cut = s[:n]
+    sp = cut.rfind(" ")
+    if sp > n * 0.6:
+        cut = cut[:sp]
+    return cut.rstrip(" ,.!?、。") 
+
+
 def assemble(platform, facts, prose):
     spec = CHANNELS[platform]
     cta = (prose.get("cta") or "").strip()
@@ -235,6 +257,17 @@ def assemble(platform, facts, prose):
     body = [b.strip() for b in (prose.get("body") or [])
             if b.strip() and b.strip() != cta
             and b.strip().strip("':\"").lower() not in _KEYS]
+    # Backstop for `prose_max`: the schema's maxLength (prose_schema()) is the
+    # primary defense, but is only as real as the backend's grammar support.
+    # This guarantees the bound regardless — measured cause of the fix: a live
+    # whatsapp generation shipped 836 chars ("sentences: 4" bounds a COUNT, and a
+    # run-on sentence sails past it) against docs' own 300-char ceiling.
+    body = body[:spec["body"]]  # normalize BEFORE any budget math below
+    if spec.get("prose_max"):
+        m = spec["prose_max"]
+        hook = _cap(hook, m)
+        body = [_cap(b, m) for b in body]
+        cta = _cap(cta, m)
     ko = is_korean(hook + " ".join(body))
     facts_block = fact_lines(facts, ko, spec)
 
@@ -260,6 +293,30 @@ def assemble(platform, facts, prose):
     text = re.sub(r"\n{3,}", "\n\n", text)
     if spec.get("cap"):
         text = text[:spec["cap"]].rstrip()
+    elif spec.get("total_max") and len(text) > spec["total_max"]:
+        # hook, facts and map are load-bearing (opening line, grounded, a link)
+        # and are never touched here. body and cta are the elastic part, and
+        # BOTH have to be — one run shipped an empty body with all 440 chars
+        # front-loaded into hook+cta, so shrinking body alone left the total
+        # untouched. body goes first (it is pure "why attend" filler), then
+        # whatever budget remains goes to cta. Rebuilt rather than blindly
+        # sliced: `cap` (x) slices the WHOLE assembled string and is documented
+        # to cut mid-hashtag; this keeps hook/facts/map intact either way.
+        tags_line = (" ".join("#" + t for t in tags)
+                    if hi and len(tags) >= lo else None)
+        fixed_parts = [hook, " · ".join(facts_block)] + tail + \
+                     ([tags_line] if tags_line else [])
+        fixed_len = sum(len(p) + 1 for p in fixed_parts if p)  # +1 per newline joiner
+        elastic_budget = max(0, spec["total_max"] - fixed_len)
+        body_budget = min(elastic_budget, sum(len(b) for b in body))
+        body = [_cap(b, body_budget) for b in body] if body_budget else []
+        cta_budget = max(0, elastic_budget - sum(len(b) for b in body))
+        cta = _cap(cta, cta_budget)
+        parts = [hook] + body + [" · ".join(facts_block), cta] + tail
+        if tags_line:
+            parts += ["", tags_line]
+        text = "\n".join(p for p in parts if p is not None).strip()
+        text = re.sub(r"\n{3,}", "\n\n", text)
     return text
 
 

@@ -33,8 +33,13 @@ export function BriefForm({ values, onChange, errors = {}, disabled }) {
 
     // price and currency are only meaningful once the event is paid, and the
     // server rejects an amount without a kind — so hide rather than offer them.
+    // map_url is never shown: it reads as an empty, unexplained field ("Google
+    // Maps what?") when what it actually does is get filled in automatically
+    // from Location, silently, server-side. A manual override is one field the
+    // form does not need to expose to do that.
     const hidden = (name) =>
-        (name === 'price' || name === 'currency') && values.price_kind !== 'paid';
+        name === 'map_url' ||
+        ((name === 'price' || name === 'currency') && values.price_kind !== 'paid');
 
     const field = (f) => {
         if (hidden(f.name)) return null;
@@ -94,11 +99,6 @@ export function BriefForm({ values, onChange, errors = {}, disabled }) {
                     id={id} type={type} disabled={disabled}
                     value={values[f.name] ?? ''}
                     onChange={set(f.name)}
-                    placeholder={f.name === 'map_url'
-                        ? (values.location
-                            ? 'auto: Google Maps search for the venue'
-                            : 'derived from Location')
-                        : ''}
                 />
             );
         }
@@ -126,11 +126,6 @@ export function BriefForm({ values, onChange, errors = {}, disabled }) {
                 </label>
             </div>
             {spec.fields.map(field)}
-            {values.location && !values.map_url && (
-                <p className="form-hint">
-                    Map link will be generated from the venue. Paste a place link to override.
-                </p>
-            )}
         </div>
     );
 }

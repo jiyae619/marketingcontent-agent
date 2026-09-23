@@ -8,6 +8,18 @@
 .brief-form input, .brief-form select, .brief-form textarea {
   padding: 0.5rem 0.6rem; border: 1px solid rgba(128, 128, 128, 0.35);
   border-radius: 6px; font: inherit; background: transparent; color: inherit;
+  box-sizing: border-box;
+}
+/* A native <select> renders taller than a same-padding <input> in most
+   browsers (its own intrinsic line-height), so height has to be forced
+   explicitly rather than left to padding alone. */
+.brief-form input:not([type="checkbox"]), .brief-form select {
+  height: 2.375rem; -webkit-appearance: none; appearance: none;
+}
+.brief-form select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='%23666' d='M4 6l4 4 4-4z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 0.5rem center;
+  padding-right: 1.75rem;
 }
 .brief-form .required { color: #d94040; }
 /* The server is the only validator, so its message is what is shown. */

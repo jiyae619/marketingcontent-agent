@@ -6,7 +6,6 @@ import { PlatformSelector } from './components/PlatformSelector/PlatformSelector
 import { TabNavigation } from './components/TabNavigation/TabNavigation';
 import { PlatformPreview } from './components/PlatformPreview/PlatformPreview';
 import { StatusMessage, LoadingSpinner } from './components/StatusMessage/StatusMessage';
-import { JudgeModelSelect } from './components/JudgeModelSelect/JudgeModelSelect';
 import { ReviewPanel } from './components/ReviewPanel/ReviewPanel';
 import { GeneratingOverlay } from './components/GeneratingOverlay/GeneratingOverlay';
 import { BriefForm } from './components/BriefForm/BriefForm';
@@ -35,7 +34,6 @@ function App() {
   const [selectedPlatforms, setSelectedPlatforms] = useState(['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']);
   const [generatedContent, setGeneratedContent] = useState({});
   const [generationIds, setGenerationIds] = useState({});
-  const [judgeModel, setJudgeModel] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState('linkedin');
   const [statusMessage, setStatusMessage] = useState(null);
@@ -113,13 +111,11 @@ function App() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(structured ? {
                 platform,
-                judge_model: judgeModel || undefined,
                 fields: briefFields,
               } : {
                 platform,
                 link_url: linkUrl.trim(),
                 has_image: Boolean(imageDataUrl),
-                judge_model: judgeModel || undefined,
                 messages: [{ role: 'user', content: userMessage }],
               }),
             });
@@ -290,10 +286,9 @@ function App() {
                   <LoadingSpinner /> Generating...
                 </>
               ) : (
-                '🚀 Generate Content!'
+                'Generate Content'
               )}
             </Button>
-            <JudgeModelSelect value={judgeModel} onChange={setJudgeModel} />
           </div>
         </Card>
 
