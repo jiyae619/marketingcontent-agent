@@ -20,11 +20,53 @@ from evaluators import evaluate as run_eval, strip_markdown, strip_ungrounded
 import providers
 import judge
 import generators
+import oauth_providers
 from concurrent.futures import ThreadPoolExecutor
+import threading
+import time as _time
+import secrets
 
 feedback_db.init_db()
 
 VALID_PLATFORMS = ['linkedin', 'instagram', 'circle', 'kakaotalk', 'whatsapp', 'x']
+PUBLISHABLE_PLATFORMS = ('linkedin', 'instagram')  # the only two with a real publish API — see docs/oauth.md
+
+_CALLBACK_PAGE = '<!doctype html><meta charset="utf-8">\n<body style="font:15px system-ui;max-width:32rem;margin:15vh auto;text-align:center">\n<h2>{title}</h2><p>{message}</p>\n<p><a href="{front}">Return to the app</a></p>\n<script>setTimeout(()=>{{try{{window.close()}}catch(e){{}}}},1200)</script>\n</body>'
+
+# In-memory CSRF state for the OAuth handshake: {state: (platform, created_at)}.
+# Five-minute secrets that die with the process, not account data, so a plain
+# dict (not the DB) is the right amount of durability — surviving a server
+# restart mid-handshake just means the user clicks "Connect" again.
+_OAUTH_STATE_TTL = 300
+_oauth_states = {}
+_oauth_states_lock = threading.Lock()
+
+
+def _new_oauth_state(platform):
+    with _oauth_states_lock:
+        now = _time.time()
+        for k, (_, ts) in list(_oauth_states.items()):
+            if now - ts > _OAUTH_STATE_TTL:
+                del _oauth_states[k]
+        state = secrets.token_urlsafe(24)
+        _oauth_states[state] = (platform, now)
+        return state
+
+
+def _consume_oauth_state(state):
+    """Returns the platform for a valid, unexpired, UNUSED state, or None.
+    Deletes it either way — a state is single-use, so a replayed callback
+    (browser back button, a retried request) fails closed instead of
+    re-running the token exchange a second time."""
+    with _oauth_states_lock:
+        entry = _oauth_states.pop(state, None)
+    if not entry:
+        return None
+    platform, ts = entry
+    if _time.time() - ts > _OAUTH_STATE_TTL:
+        return None
+    return platform
+
 VOICE_EXAMPLES_LIMIT = 3
 
 GEMINI_MODEL = 'gemini-2.5-flash'
@@ -213,6 +255,126 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                 self._json(400, {'error': 'generation_id must be an integer'})
                 return
             self._json(200, result or {})
+            return
+
+        # /api/oauth/<platform>/authorize — redirects the BROWSER (not fetch) to
+        # the platform's consent screen. GET, not POST: this has to be a normal
+        # navigation so the platform's own login page can render.
+        if self.path.startswith('/api/oauth/') and self.path.endswith('/authorize'):
+            platform = self.path.split('/')[3]
+            if platform not in PUBLISHABLE_PLATFORMS:
+                self._json(404, {'error': f'unknown platform: {platform}'})
+                return
+            state = _new_oauth_state(platform)
+            try:
+                url = (oauth_providers.linkedin_authorize_url(state) if platform == 'linkedin'
+                      else oauth_providers.instagram_authorize_url(state))
+            except oauth_providers.OAuthError as e:
+                # This is a browser navigation (the Connect button sets
+                # window.location.href), not a fetch the frontend can catch —
+                # a JSON body would render as a bare blob with no way back.
+                # Same friendly page the callback route uses.
+                front = os.getenv('FRONTEND_ORIGIN', 'http://localhost:5173')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.end_headers()
+                safe = str(e).replace('<', '&lt;').replace('>', '&gt;')
+                self.wfile.write(_CALLBACK_PAGE.format(
+                    title='Not configured yet', message=safe, front=front).encode())
+                return
+            self.send_response(302)
+            self.send_header('Location', url)
+            self.end_headers()
+            return
+
+        # /api/oauth/<platform>/callback — the platform redirects the browser
+        # HERE after the user approves or denies. Must validate `state` before
+        # touching `code` at all (see _consume_oauth_state's docstring).
+        if self.path.startswith('/api/oauth/') and '/callback' in self.path:
+            from urllib.parse import urlparse, parse_qs
+            parsed = urlparse(self.path)
+            platform = parsed.path.split('/')[3]
+            q = parse_qs(parsed.query)
+            state = (q.get('state') or [None])[0]
+            code = (q.get('code') or [None])[0]
+            err = (q.get('error_description') or q.get('error') or [None])[0]
+
+            def _finish(ok, message):
+                # A real page, not JSON: the browser lands here directly.
+                front = os.getenv('FRONTEND_ORIGIN', 'http://localhost:5173')
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.end_headers()
+                safe = message.replace('<', '&lt;').replace('>', '&gt;')
+                title = "Connected" if ok else "Could not connect"
+                self.wfile.write(_CALLBACK_PAGE.format(title=title, message=safe, front=front).encode())
+
+            if not state or not _consume_oauth_state(state):
+                _finish(False, 'This link has expired or was already used. Go back and click Connect again.')
+                return
+            expected_platform = platform
+            if err:
+                _finish(False, f'{expected_platform} declined: {err}')
+                return
+            if not code:
+                _finish(False, 'No authorization code returned.')
+                return
+            try:
+                if platform == 'linkedin':
+                    tok = oauth_providers.linkedin_exchange_code(code)
+                    access = tok.get('access_token')
+                    if not access:
+                        raise oauth_providers.OAuthError(f'no access_token in response: {tok}')
+                    info = oauth_providers.linkedin_userinfo(access)
+                    member_urn = f"urn:li:person:{info['sub']}"
+                    expires_at = _time.time() + float(tok.get('expires_in', 0)) if tok.get('expires_in') else None
+                    feedback_db.save_oauth_account(
+                        platform='linkedin', external_id=member_urn,
+                        label=info.get('name') or info.get('email'),
+                        access_token=access, refresh_token=tok.get('refresh_token'),
+                        scope=os.environ.get('LINKEDIN_SCOPES', ''), expires_at=expires_at)
+                    _finish(True, f"LinkedIn connected as {info.get('name') or member_urn}.")
+                else:
+                    tok = oauth_providers.instagram_exchange_code(code)
+                    short_lived = tok.get('access_token')
+                    if not short_lived:
+                        raise oauth_providers.OAuthError(f'no access_token in response: {tok}')
+                    long_lived = oauth_providers.instagram_long_lived_token(short_lived)
+                    user_token = long_lived.get('access_token', short_lived)
+                    account = oauth_providers.instagram_discover_account(user_token)
+                    expires_in = long_lived.get('expires_in')
+                    expires_at = _time.time() + float(expires_in) if expires_in else None
+                    feedback_db.save_oauth_account(
+                        platform='instagram', external_id=account['ig_user_id'],
+                        label=f"@{account['username']}" if account.get('username') else account['ig_user_id'],
+                        access_token=user_token, page_token=account['page_token'],
+                        scope=os.environ.get('META_SCOPES', ''), expires_at=expires_at)
+                    _finish(True, f"Instagram connected as @{account.get('username', account['ig_user_id'])}.")
+            except oauth_providers.OAuthError as e:
+                _finish(False, str(e))
+            except Exception as e:
+                _finish(False, f'Unexpected error: {e}')
+            return
+
+        # Connected accounts for the UI — tokens are never in this response;
+        # list_oauth_accounts() does not select the token columns at all.
+        if self.path == '/api/oauth/accounts':
+            self._json(200, {'accounts': feedback_db.list_oauth_accounts()})
+            return
+
+        # Publish history for one generation, so the review UI can show
+        # "published 2m ago" / "scheduled for 6pm" / "failed: <reason>".
+        if self.path.startswith('/api/publish/log'):
+            from urllib.parse import urlparse, parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            gid = (q.get('generation_id') or [None])[0]
+            if not gid:
+                self._json(400, {'error': 'generation_id required'})
+                return
+            try:
+                self._json(200, {'log': feedback_db.publish_log_for(int(gid))})
+            except ValueError:
+                self._json(400, {'error': 'generation_id must be an integer'})
             return
 
         # Light dashboard for the dev — backend-only signal
@@ -464,6 +626,72 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
     def do_POST(self):
         # /api/copies — human verdict on generated content (approve / edit / reject),
         # optionally carrying one flag from the shared taxonomy.
+        # /api/oauth/<platform>/disconnect — soft-delete the account (see
+        # disconnect_oauth_account's docstring on why tokens are wiped, not
+        # merely flagged).
+        if self.path.startswith('/api/oauth/') and self.path.endswith('/disconnect'):
+            length = int(self.headers.get('Content-Length', '0'))
+            payload = json.loads(self.rfile.read(length).decode('utf-8') or '{}')
+            account_id = payload.get('account_id')
+            if not isinstance(account_id, int):
+                self._json(400, {'error': 'account_id (int) required'})
+                return
+            ok = feedback_db.disconnect_oauth_account(account_id)
+            if not ok:
+                self._json(404, {'error': 'no connected account with that id'})
+                return
+            self._json(200, {'disconnected': account_id})
+            return
+
+        # /api/publish — enqueue a generation for publishing. Takes IDs ONLY,
+        # never `content`: the text that goes out is read server-side from the
+        # latest approve/edit verdict on `generation_id` (feedback_db.enqueue_
+        # publish), so nothing this endpoint accepts can change WHAT gets
+        # published, only WHETHER and WHEN. scheduled_for is an optional unix
+        # timestamp; omitted means "publish on the next scheduler tick."
+        if self.path == '/api/publish':
+            length = int(self.headers.get('Content-Length', '0'))
+            payload = json.loads(self.rfile.read(length).decode('utf-8') or '{}')
+            platform = (payload.get('platform') or '').lower()
+            gen_id = payload.get('generation_id')
+            account_id = payload.get('oauth_account_id')
+            scheduled_for = payload.get('scheduled_for')
+            if platform not in PUBLISHABLE_PLATFORMS:
+                self._json(400, {'error': f'platform must be one of {PUBLISHABLE_PLATFORMS}'})
+                return
+            if not isinstance(gen_id, int) or not isinstance(account_id, int):
+                self._json(400, {'error': 'generation_id and oauth_account_id (int) required'})
+                return
+            if scheduled_for is not None and not isinstance(scheduled_for, (int, float)):
+                self._json(400, {'error': 'scheduled_for must be a unix timestamp'})
+                return
+            try:
+                job = feedback_db.enqueue_publish(
+                    generation_id=gen_id, platform=platform,
+                    oauth_account_id=account_id, scheduled_for=scheduled_for)
+            except ValueError as e:
+                self._json(400, {'error': str(e)})
+                return
+            print(f"[publish] queued {platform} gen={gen_id} job={job['id']} "
+                  f"scheduled_for={scheduled_for or 'now'}")
+            self._json(200, {'job_id': job['id'], 'content_fingerprint': job['content_fingerprint']})
+            return
+
+        # /api/publish/cancel — only a still-pending (not yet claimed) job.
+        if self.path == '/api/publish/cancel':
+            length = int(self.headers.get('Content-Length', '0'))
+            payload = json.loads(self.rfile.read(length).decode('utf-8') or '{}')
+            job_id = payload.get('job_id')
+            if not isinstance(job_id, int):
+                self._json(400, {'error': 'job_id (int) required'})
+                return
+            ok = feedback_db.cancel_publish_job(job_id)
+            if not ok:
+                self._json(409, {'error': 'job is not pending (already running, done, or unknown)'})
+                return
+            self._json(200, {'canceled': job_id})
+            return
+
         if self.path == '/api/copies':
             try:
                 length = int(self.headers.get('Content-Length', '0'))
@@ -960,12 +1188,71 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
             # For other requests, use default handler
             super().do_POST()
 
+PUBLISH_POLL_SECONDS = 15
+
+
+def _run_publish_job(job):
+    """One job: claim it, publish through the right provider, record the
+    outcome. Every branch — success, a platform rejection, an unexpected
+    exception — ends in complete_publish_job, so a job never sits in
+    'publishing' forever because of a bug in this function."""
+    if not feedback_db.claim_publish_job(job['id']):
+        return  # already claimed by another tick or process
+    try:
+        account = feedback_db.get_oauth_tokens(job['oauth_account_id'])
+        if not account:
+            raise oauth_providers.OAuthError(
+                'the connected account was disconnected before this job ran')
+        gen = feedback_db.get_generation(job['generation_id'])
+        if not gen:
+            raise oauth_providers.OAuthError('the source generation no longer exists')
+        text = gen['generated_content']
+        # Re-fingerprint what we are ABOUT to send against what was approved at
+        # enqueue time. A voice-profile resynthesis or a later edit to the same
+        # generation row between enqueue and publish would otherwise let a job
+        # publish text nobody approved in this exact form.
+        import hashlib as _hashlib
+        latest = _hashlib.sha256(text.encode('utf-8')).hexdigest()
+        if latest != job['content_fingerprint']:
+            raise oauth_providers.OAuthError(
+                'content changed since this was approved for publishing — '
+                're-approve and re-queue it')
+        if job['platform'] == 'linkedin':
+            post_id = oauth_providers.linkedin_publish(
+                account['access_token'], account['external_id'], text)
+        else:
+            post_id = oauth_providers.instagram_publish(
+                account['page_token'], account['external_id'], text, image_url=None)
+        feedback_db.complete_publish_job(job['id'], remote_post_id=post_id)
+        print(f"[publish] {job['platform']} job={job['id']} -> {post_id}")
+    except Exception as e:
+        feedback_db.complete_publish_job(job['id'], error=str(e))
+        print(f"[publish] {job['platform']} job={job['id']} FAILED: {e}")
+
+
+def _publish_scheduler_loop():
+    """Runs for the lifetime of the process. Scheduling therefore only works
+    while server.py is running — a laptop that sleeps, or a killed process,
+    means a scheduled post does not go out at its time. That limit is
+    structural to a local-only server and is surfaced in the UI, not hidden
+    here."""
+    while True:
+        try:
+            for job in feedback_db.due_publish_jobs():
+                _run_publish_job(job)
+        except Exception as e:
+            print(f"[publish] scheduler tick failed: {e}")
+        _time.sleep(PUBLISH_POLL_SECONDS)
+
+
 if __name__ == '__main__':
     api_port = os.getenv('API_PORT')
     if not api_port:
         sys.exit('API_PORT not set. Add it to .env (see .env.example).')
     PORT = int(api_port)
     server = ThreadingHTTPServer(('localhost', PORT), CORSRequestHandler)
+    threading.Thread(target=_publish_scheduler_loop, daemon=True).start()
     print(f'Server running on http://localhost:{PORT}')
+    print(f'Publish scheduler polling every {PUBLISH_POLL_SECONDS}s')
     print('Press Ctrl+C to stop')
     server.serve_forever()

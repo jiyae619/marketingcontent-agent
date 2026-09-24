@@ -376,6 +376,7 @@ function App() {
                             platform={id}
                             content={content}
                             generationId={generationIds[id]}
+                            hasImage={Boolean(imageDataUrl)}
                             onStatus={showStatus}
                           />
                         )}
