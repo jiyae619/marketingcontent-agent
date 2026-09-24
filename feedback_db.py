@@ -208,7 +208,11 @@ CREATE TABLE IF NOT EXISTS oauth_accounts (
     label              TEXT,                      -- display name only, e.g. "PKNIC" or "@pknic_official"
     access_token_enc   BLOB NOT NULL,
     refresh_token_enc  BLOB,                      -- nullable: LinkedIn's basic 3-legged flow issues none
-    page_token_enc     BLOB,                      -- Instagram only: the Page-scoped token publishing needs
+    page_token_enc     BLOB,                      -- UNUSED by the current Instagram flow (Instagram API with
+                                                   -- Instagram Login has no Facebook Page or page-scoped
+                                                   -- token at all — see oauth_providers.py's module docstring).
+                                                   -- Left in place, nullable, in case a Facebook-Login-based
+                                                   -- flow is ever added back for a different use case.
     scope              TEXT,
     expires_at         REAL,                      -- unix ts; NULL = unknown/non-expiring
     connected_at       REAL NOT NULL,

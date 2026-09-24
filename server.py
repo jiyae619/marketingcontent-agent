@@ -335,21 +335,25 @@ class CORSRequestHandler(SimpleHTTPRequestHandler):
                         scope=os.environ.get('LINKEDIN_SCOPES', ''), expires_at=expires_at)
                     _finish(True, f"LinkedIn connected as {info.get('name') or member_urn}.")
                 else:
+                    # Instagram API with Instagram Login: the token exchange
+                    # itself returns the Instagram-scoped user_id — there is
+                    # no Facebook Page to walk through to find it.
                     tok = oauth_providers.instagram_exchange_code(code)
                     short_lived = tok.get('access_token')
-                    if not short_lived:
-                        raise oauth_providers.OAuthError(f'no access_token in response: {tok}')
+                    ig_user_id = tok.get('user_id')
+                    if not short_lived or not ig_user_id:
+                        raise oauth_providers.OAuthError(f'no access_token/user_id in response: {tok}')
                     long_lived = oauth_providers.instagram_long_lived_token(short_lived)
-                    user_token = long_lived.get('access_token', short_lived)
-                    account = oauth_providers.instagram_discover_account(user_token)
+                    access_token = long_lived.get('access_token', short_lived)
+                    username = oauth_providers.instagram_username(access_token, ig_user_id)
                     expires_in = long_lived.get('expires_in')
                     expires_at = _time.time() + float(expires_in) if expires_in else None
                     feedback_db.save_oauth_account(
-                        platform='instagram', external_id=account['ig_user_id'],
-                        label=f"@{account['username']}" if account.get('username') else account['ig_user_id'],
-                        access_token=user_token, page_token=account['page_token'],
-                        scope=os.environ.get('META_SCOPES', ''), expires_at=expires_at)
-                    _finish(True, f"Instagram connected as @{account.get('username', account['ig_user_id'])}.")
+                        platform='instagram', external_id=str(ig_user_id),
+                        label=f"@{username}" if username else str(ig_user_id),
+                        access_token=access_token,
+                        scope=os.environ.get('INSTAGRAM_SCOPES', ''), expires_at=expires_at)
+                    _finish(True, f"Instagram connected as @{username or ig_user_id}.")
             except oauth_providers.OAuthError as e:
                 _finish(False, str(e))
             except Exception as e:
@@ -1221,8 +1225,10 @@ def _run_publish_job(job):
             post_id = oauth_providers.linkedin_publish(
                 account['access_token'], account['external_id'], text)
         else:
+            # No page_token in this flow — Instagram API with Instagram Login
+            # publishes with the same access_token the account connected with.
             post_id = oauth_providers.instagram_publish(
-                account['page_token'], account['external_id'], text, image_url=None)
+                account['access_token'], account['external_id'], text, image_url=None)
         feedback_db.complete_publish_job(job['id'], remote_post_id=post_id)
         print(f"[publish] {job['platform']} job={job['id']} -> {post_id}")
     except Exception as e:

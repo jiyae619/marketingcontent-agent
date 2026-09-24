@@ -105,9 +105,10 @@ def main():
           db.get_oauth_tokens(acc_id) is None)
 
     # --- publish queue: the fingerprint invariant ----------------------------
+    # No page_token for Instagram anymore — Instagram API with Instagram Login
+    # publishes with the same access_token the account connected with.
     ig_acc = db.save_oauth_account(platform="instagram", external_id="ig:999",
-                                   label="@pknic", access_token="ig-user-tok",
-                                   page_token="ig-page-tok")
+                                   label="@pknic", access_token="ig-user-tok")
     gen_id = db.log_generation(platform="linkedin", original_input="brief",
                                generated_content="Original draft text.")
 
@@ -175,7 +176,8 @@ def main():
           db.cancel_publish_job(claimed_then_cancel["id"]) is False)
 
     # --- oauth_providers: URL builders, no network ---------------------------
-    for k in ("LINKEDIN_CLIENT_ID", "LINKEDIN_REDIRECT_URI", "META_APP_ID", "META_REDIRECT_URI"):
+    for k in ("LINKEDIN_CLIENT_ID", "LINKEDIN_REDIRECT_URI",
+             "INSTAGRAM_APP_ID", "INSTAGRAM_REDIRECT_URI"):
         os.environ.pop(k, None)
     try:
         op.linkedin_authorize_url("state123")
@@ -190,11 +192,21 @@ def main():
           "state=state123" in url and "test-client-id" in url
           and url.startswith(op.LINKEDIN_AUTH_URL))
 
-    os.environ["META_APP_ID"] = "test-app-id"
-    os.environ["META_REDIRECT_URI"] = "http://localhost:8081/api/oauth/instagram/callback"
+    try:
+        op.instagram_authorize_url("state456")
+        raise AssertionError("should have raised with no app id configured")
+    except op.OAuthError:
+        check("instagram_authorize_url refuses to build a URL with no app id", True)
+
+    os.environ["INSTAGRAM_APP_ID"] = "test-app-id"
+    os.environ["INSTAGRAM_REDIRECT_URI"] = "http://localhost:8081/api/oauth/instagram/callback"
     ig_url = op.instagram_authorize_url("state456")
-    check("instagram authorize URL carries the state and app id, hits the pinned graph version",
-          "state=state456" in ig_url and "test-app-id" in ig_url and op.META_GRAPH_VERSION in ig_url)
+    check("instagram authorize URL carries the state and app id, hits instagram.com not facebook.com",
+          "state=state456" in ig_url and "test-app-id" in ig_url
+          and ig_url.startswith(op.INSTAGRAM_AUTH_URL) and "facebook.com" not in ig_url)
+    check("instagram authorize URL requests only the scopes this app actually uses",
+          "instagram_business_content_publish" in ig_url
+          and "instagram_business_manage_messages" not in ig_url)
 
     s1, s2 = op.new_state(), op.new_state()
     check("new_state() is unique per call", s1 != s2)

@@ -10,7 +10,16 @@ need a code change.
 
 Env required (see .env.example):
     LinkedIn:   LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET, LINKEDIN_REDIRECT_URI
-    Instagram:  META_APP_ID, META_APP_SECRET, META_REDIRECT_URI
+    Instagram:  INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, INSTAGRAM_REDIRECT_URI
+
+Instagram uses "Instagram API with Instagram Login" (Business Login for
+Instagram) — confirmed 2026-09-24 against Meta's own docs. Chosen over the
+alternative "Instagram API with Facebook Login for Business" because this
+project manages one specific, known account (PKNIC's), not a public app where
+strangers connect their own Instagram — so there is no reason to require a
+linked Facebook Page in the middle. A prior version of this file DID use the
+Facebook Login variant; if you see a `page_token` or "Facebook Page" anywhere
+in old notes, that was the wrong choice for this project and has been removed.
 """
 import json
 import os
@@ -29,9 +38,23 @@ LINKEDIN_POSTS_URL = "https://api.linkedin.com/rest/posts"
 # without a deliberate bump — matches the GRAPH_VERSION reasoning below.
 LINKEDIN_API_VERSION = os.environ.get("LINKEDIN_API_VERSION", "202601")
 
-META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v23.0")
-META_GRAPH = f"https://graph.facebook.com/{META_GRAPH_VERSION}"
-META_AUTH_URL = f"https://www.facebook.com/{META_GRAPH_VERSION}/dialog/oauth"
+# Three DIFFERENT hosts, not a typo — this is how Meta actually split it up:
+#   www.instagram.com    the consent screen itself
+#   api.instagram.com    the short-lived token exchange (still the OLD host)
+#   graph.instagram.com  everything after that: long-lived exchange, account
+#                        lookup, publishing. No graph.facebook.com anywhere in
+#                        this flow — that host belongs to the OTHER (Facebook
+#                        Login for Business) variant this project does not use.
+# Sources disagree on the current version (secondary blogs cite v21 through
+# v26, and at least one claims graph.instagram.com is unversioned for this
+# specific flow) — Meta's own docs were not directly fetchable at build time.
+# v23.0 is the one third-party source that explicitly confirmed still working;
+# treat this default as a starting point to verify, not a settled fact, and
+# check developers.facebook.com/docs/graph-api/changelog before relying on it.
+INSTAGRAM_GRAPH_VERSION = os.environ.get("INSTAGRAM_GRAPH_VERSION", "v23.0")
+INSTAGRAM_AUTH_URL = "https://www.instagram.com/oauth/authorize"
+INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token"
+INSTAGRAM_GRAPH = f"https://graph.instagram.com/{INSTAGRAM_GRAPH_VERSION}"
 
 
 class OAuthError(Exception):
@@ -157,99 +180,113 @@ def linkedin_publish(access_token: str, member_urn: str, text: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# Instagram (via the Meta Graph API — Facebook Login for Business)
+# Instagram — "Instagram API with Instagram Login" (Business Login for
+# Instagram). NOT the Facebook Login for Business variant: this one has no
+# Facebook Page anywhere in it. The account holder authorizes directly at
+# instagram.com, and the token that comes back is already scoped to their
+# Instagram Business/Creator account — there is no separate "page token" to
+# discover, which is why this section is shorter than a Page-based flow.
 # --------------------------------------------------------------------------
-# There is no "Instagram API" that stands alone: publishing goes through a
-# Facebook Page that has an Instagram Professional account linked to it, using
-# a Page-scoped access token, not the user token OAuth itself returns.
 
 def instagram_authorize_url(state: str) -> str:
-    app_id = os.environ.get("META_APP_ID")
-    redirect_uri = os.environ.get("META_REDIRECT_URI")
+    app_id = os.environ.get("INSTAGRAM_APP_ID")
+    redirect_uri = os.environ.get("INSTAGRAM_REDIRECT_URI")
     if not app_id or not redirect_uri:
-        raise OAuthError("META_APP_ID / META_REDIRECT_URI not set")
+        raise OAuthError("INSTAGRAM_APP_ID / INSTAGRAM_REDIRECT_URI not set")
+    # instagram_business_basic: read the connected account's own identity.
+    # instagram_business_content_publish: the one this project actually needs.
+    # Deliberately NOT requesting instagram_business_manage_messages or
+    # instagram_business_manage_comments — this app posts, it doesn't manage a
+    # DM inbox or moderate comments, and asking for scopes you don't use is
+    # both an unnecessary review-surface and an unnecessary risk if the token
+    # ever leaked.
     scope = os.environ.get(
-        "META_SCOPES",
-        "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement")
+        "INSTAGRAM_SCOPES", "instagram_business_basic,instagram_business_content_publish")
     params = {
-        "client_id": app_id, "redirect_uri": redirect_uri, "state": state, "scope": scope,
-        "response_type": "code",
+        "client_id": app_id, "redirect_uri": redirect_uri, "response_type": "code",
+        "scope": scope, "state": state,
     }
-    return f"{META_AUTH_URL}?{urllib.parse.urlencode(params)}"
+    return f"{INSTAGRAM_AUTH_URL}?{urllib.parse.urlencode(params)}"
 
 
 def instagram_exchange_code(code: str) -> dict:
-    app_id = os.environ.get("META_APP_ID")
-    app_secret = os.environ.get("META_APP_SECRET")
-    redirect_uri = os.environ.get("META_REDIRECT_URI")
-    params = {"client_id": app_id, "redirect_uri": redirect_uri,
-              "client_secret": app_secret, "code": code}
-    return _get_json(f"{META_GRAPH}/oauth/access_token?{urllib.parse.urlencode(params)}")
+    """Returns {access_token, user_id, permissions}. `user_id` is the
+    Instagram-scoped id for the account that just authorized — this IS the id
+    every later publish call uses; there is no extra lookup step. The short-
+    lived token this returns is good for about an hour, which is why the
+    caller immediately trades it up via instagram_long_lived_token()."""
+    app_id = os.environ.get("INSTAGRAM_APP_ID")
+    app_secret = os.environ.get("INSTAGRAM_APP_SECRET")
+    redirect_uri = os.environ.get("INSTAGRAM_REDIRECT_URI")
+    return _post_form(INSTAGRAM_TOKEN_URL, {
+        "client_id": app_id, "client_secret": app_secret, "code": code,
+        "grant_type": "authorization_code", "redirect_uri": redirect_uri,
+    })
 
 
 def instagram_long_lived_token(short_lived_token: str) -> dict:
-    """The token from the code exchange is short-lived (~1-2h). Trading it for
-    a long-lived one (~60 days) is what makes 'connect once' meaningful instead
-    of the user reconnecting every session."""
-    app_id = os.environ.get("META_APP_ID")
-    app_secret = os.environ.get("META_APP_SECRET")
-    params = {"grant_type": "fb_exchange_token", "client_id": app_id,
-              "client_secret": app_secret, "fb_exchange_token": short_lived_token}
-    return _get_json(f"{META_GRAPH}/oauth/access_token?{urllib.parse.urlencode(params)}")
+    """~60 days, refreshable after the first 24h of its life. Trading up
+    immediately is what makes 'connect once' meaningful instead of the token
+    dying within the hour."""
+    app_secret = os.environ.get("INSTAGRAM_APP_SECRET")
+    params = {"grant_type": "ig_exchange_token", "client_secret": app_secret,
+              "access_token": short_lived_token}
+    return _get_json(f"{INSTAGRAM_GRAPH}/access_token?{urllib.parse.urlencode(params)}")
 
 
-def instagram_discover_account(user_token: str) -> dict:
-    """Walks user token -> Facebook Pages the user manages -> each Page's linked
-    Instagram Professional account, and returns the first Page that has one,
-    with the PAGE token (publishing needs the Page's own token, which is
-    different from the user token used to discover it) and the IG account id
-    and username. Raises OAuthError with a specific, actionable message when
-    the chain is missing a link — "connected" but "no Page" and "connected but
-    the Page has no linked Instagram account" are different problems for the
-    person setting this up to fix.
-    """
-    pages = _get_json(f"{META_GRAPH}/me/accounts?access_token={user_token}").get("data", [])
-    if not pages:
-        raise OAuthError(
-            "no Facebook Pages found for this account — Instagram publishing "
-            "requires a Facebook Page with this Instagram account linked as "
-            "its Professional account")
-    for page in pages:
-        page_id, page_token = page["id"], page["access_token"]
-        info = _get_json(
-            f"{META_GRAPH}/{page_id}?fields=instagram_business_account&access_token={page_token}")
-        ig = info.get("instagram_business_account")
-        if ig:
-            ig_id = ig["id"]
-            username = _get_json(
-                f"{META_GRAPH}/{ig_id}?fields=username&access_token={page_token}"
-            ).get("username", "")
-            return {"ig_user_id": ig_id, "username": username,
-                    "page_id": page_id, "page_token": page_token}
-    raise OAuthError(
-        f"found {len(pages)} Facebook Page(s), but none has an Instagram "
-        "Professional account linked — link one in Meta Business Suite, then reconnect")
+def instagram_username(access_token: str, ig_user_id: str) -> str:
+    """Display label only — connect-time convenience so the UI can show
+    "@pknic_official" instead of a bare numeric id. Never used for anything a
+    publish call depends on."""
+    try:
+        return _get_json(
+            f"{INSTAGRAM_GRAPH}/{ig_user_id}?fields=username&access_token={access_token}"
+        ).get("username", "")
+    except OAuthError:
+        return ""  # cosmetic only — a failed lookup here must not block connecting
 
 
-def instagram_publish(page_token: str, ig_user_id: str, caption: str, image_url: str) -> str:
+def instagram_publish(access_token: str, ig_user_id: str, caption: str, image_url: str) -> str:
     """Two-step, per Meta's actual API: create a media container, then publish
     it. Instagram has no text-only post type at all — image_url is required
     and must be a URL Meta's servers can fetch (a browser data: URL will not
     work), which is why the caller checks for a real hosted image before
-    calling this rather than letting the platform reject it."""
+    calling this rather than letting the platform reject it.
+
+    Polls the container's status_code before publishing (bounded: ~10s total).
+    Meta's own guidance is to check for FINISHED rather than publish
+    immediately — publishing against a container still being processed is a
+    real failure mode for larger images, not a theoretical one.
+    """
     if not image_url:
         raise OAuthError(
             "Instagram requires an image; this post has none attached "
             "(a data: URL from the browser is not fetchable by Meta's servers — "
             "the image needs to be hosted somewhere public first)")
-    container = _post_json(f"{META_GRAPH}/{ig_user_id}/media", {
-        "image_url": image_url, "caption": caption, "access_token": page_token,
+    container = _post_json(f"{INSTAGRAM_GRAPH}/{ig_user_id}/media", {
+        "image_url": image_url, "caption": caption, "access_token": access_token,
     })
     creation_id = container.get("id")
     if not creation_id:
         raise OAuthError(f"Instagram media container creation returned no id: {container}")
-    result = _post_json(f"{META_GRAPH}/{ig_user_id}/media_publish", {
-        "creation_id": creation_id, "access_token": page_token,
+
+    for _ in range(5):
+        status = _get_json(
+            f"{INSTAGRAM_GRAPH}/{creation_id}?fields=status_code&access_token={access_token}"
+        ).get("status_code")
+        if status == "FINISHED":
+            break
+        if status == "ERROR":
+            raise OAuthError(f"Instagram failed to process the image container ({creation_id})")
+        time.sleep(2)
+    # Falls through to publish even without an observed FINISHED: a status
+    # check that itself failed or timed out should not silently drop the
+    # post — Meta's own media_publish call will reject it with a specific
+    # error if the container genuinely isn't ready, which surfaces as an
+    # OAuthError from _post_json below rather than a mysterious no-op.
+
+    result = _post_json(f"{INSTAGRAM_GRAPH}/{ig_user_id}/media_publish", {
+        "creation_id": creation_id, "access_token": access_token,
     })
     post_id = result.get("id")
     if not post_id:
