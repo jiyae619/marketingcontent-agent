@@ -4,9 +4,13 @@
    Direction: a quiet editorial workspace. One accent (forest), warm neutral
    paper, depth from layered shadow rather than borders. The single
    expressive move is the serif wordmark and panel titles; everything the
-   user works in is set in Geist for density and even rhythm. */
+   user works in is set in General Sans — more open counters and a taller
+   x-height than Geist, so the size scale and label tracking below are
+   tuned for it specifically, not just carried over from the old font. */
 
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap');
+@import url('https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
 
 :root {
   /* Brand */
@@ -55,19 +59,23 @@
   --color-x-green: #00ba7c;
 
   /* Type. Hangul falls through to the platform's native Korean face. */
-  --font-sans: 'Geist', 'Apple SD Gothic Neo', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: 'General Sans', 'Apple SD Gothic Neo', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: 'Instrument Serif', 'Times New Roman', serif;
   --font-mono: 'Geist Mono', 'SF Mono', ui-monospace, monospace;
   --font-primary: var(--font-sans);
 
-  /* 1.2 minor-third scale from 14px body */
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.8125rem;
-  --font-size-base: 0.875rem;
-  --font-size-lg: 1rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
-  --font-size-3xl: 1.875rem;
+  /* Same 1.2 minor-third ladder as before, shifted up one step (~7%) from a
+     15px body instead of 14px. General Sans' x-height reads taller than
+     Geist's at an identical font-size, but its counters are more open, so
+     the old 12-14px labels and buttons looked cramped rather than merely
+     small — this is a size AND a spacing fix together. */
+  --font-size-xs: 0.8125rem;   /* 13px, was 12px */
+  --font-size-sm: 0.875rem;    /* 14px, was 13px */
+  --font-size-base: 0.9375rem; /* 15px, was 14px */
+  --font-size-lg: 1.0625rem;   /* 17px, was 16px */
+  --font-size-xl: 1.3125rem;   /* 21px, was 20px */
+  --font-size-2xl: 1.5625rem;  /* 25px, was 24px */
+  --font-size-3xl: 1.9375rem;  /* 31px, was 30px */
 
   --font-weight-normal: 400;
   --font-weight-medium: 500;
@@ -125,7 +133,9 @@ body {
     linear-gradient(180deg, #EFEDE6 0, var(--color-bg-primary) 280px) no-repeat,
     var(--color-bg-primary);
   color: var(--color-text-primary);
-  line-height: 1.55;
+  /* 1.55 -> 1.6: General Sans' open counters need a touch more lead than
+     Geist did at the same ratio, or paragraphs read dense. */
+  line-height: 1.6;
   min-height: 100vh;
   overflow-x: hidden;
 }
@@ -343,7 +353,10 @@ label,
   font-weight: var(--font-weight-medium);
   color: var(--color-text-secondary);
   margin-bottom: var(--space-2xs);
-  letter-spacing: 0.01em;
+  /* General Sans' lowercase counters sit close together at 13px; a field
+     label is short enough that +0.02em opens it up without reading as
+     tracked-out caps. */
+  letter-spacing: 0.02em;
 }
 
 input[type="text"],
