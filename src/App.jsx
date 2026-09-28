@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from './components/Button/Button';
 import { Input } from './components/Input/Input';
 import { PlatformSelector } from './components/PlatformSelector/PlatformSelector';
@@ -48,17 +48,6 @@ function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState('linkedin');
   const [statusMessage, setStatusMessage] = useState(null);
-  const [backendUnreachable, setBackendUnreachable] = useState(false);
-
-  // This app has no hosted backend — server.py binds to localhost only and
-  // drives local Ollama models, by design (see CLAUDE.md: LOCAL_ONLY). A
-  // deployed copy of this page (e.g. the Netlify preview) has nothing at
-  // /api to talk to, so every generate click would otherwise fail silently.
-  useEffect(() => {
-    fetch('/api/generator/models')
-      .then((res) => setBackendUnreachable(!res.ok))
-      .catch(() => setBackendUnreachable(true));
-  }, []);
 
   const handleImageUpload = (event) => {
     const file = event.target.files?.[0];
@@ -199,14 +188,6 @@ function App() {
           <span className="topbar-meta">One brief, written for every channel</span>
         </div>
       </header>
-
-      {backendUnreachable && (
-        <div className="notice" role="note">
-          You're viewing the live UI — the fields below are fully explorable. Generation
-          itself runs on a local model on the developer's machine and isn't available from
-          this hosted preview. See the case study for a recorded walkthrough.
-        </div>
-      )}
 
       <main className="workspace">
         <section className="panel brief-panel" aria-labelledby="brief-title">

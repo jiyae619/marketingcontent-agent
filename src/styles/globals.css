@@ -6,9 +6,16 @@
    expressive move is the serif wordmark and panel titles; everything the
    user works in is set in General Sans — more open counters and a taller
    x-height than Geist, so the size scale and label tracking below are
-   tuned for it specifically, not just carried over from the old font. */
+   tuned for it specifically, not just carried over from the old font.
 
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif&display=swap');
+   The display serif was Instrument Serif at its only weight (400) with
+   negative tracking — thin strokes plus tightened spacing read as narrow
+   and cramped rather than elegant. Fraunces carries real weight (500/600)
+   and has open, generous counters by design, so it fixes both complaints
+   at once instead of just loosening the tracking on a font that was never
+   going to look substantial at display sizes. */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap');
 @import url('https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
 
@@ -60,7 +67,7 @@
 
   /* Type. Hangul falls through to the platform's native Korean face. */
   --font-sans: 'General Sans', 'Apple SD Gothic Neo', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-serif: 'Instrument Serif', 'Times New Roman', serif;
+  --font-serif: 'Fraunces', 'Times New Roman', serif;
   --font-mono: 'Geist Mono', 'SF Mono', ui-monospace, monospace;
   --font-primary: var(--font-sans);
 
@@ -191,25 +198,18 @@ code {
 
 .wordmark {
   font-family: var(--font-serif);
+  font-weight: 600;
   font-size: 1.375rem;
-  letter-spacing: -0.005em;
+  /* Fraunces reads with plenty of presence at 600 without help from tight
+     tracking — was -0.005em, which piled onto Instrument Serif's already
+     thin strokes and made the whole wordmark feel narrow. */
+  letter-spacing: 0;
   color: var(--color-forest);
 }
 
 .topbar-meta {
   font-size: var(--font-size-sm);
   color: var(--color-text-tertiary);
-}
-
-.notice {
-  max-width: var(--max-width-content);
-  margin: var(--space-md) auto 0;
-  padding: var(--space-sm) var(--space-md);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
-  background: #fbf6e9;
-  border: 1px solid #efe2bf;
-  border-radius: var(--border-radius-md);
 }
 
 .workspace {
@@ -250,9 +250,9 @@ code {
 
 .panel-title {
   font-family: var(--font-serif);
-  font-weight: 400;
+  font-weight: 600;
   font-size: var(--font-size-2xl);
-  letter-spacing: -0.005em;
+  letter-spacing: 0;
   color: var(--color-text-primary);
 }
 
@@ -318,7 +318,7 @@ code {
 
 .card-title {
   font-family: var(--font-serif);
-  font-weight: 400;
+  font-weight: 600;
   font-size: var(--font-size-xl);
 }
 
