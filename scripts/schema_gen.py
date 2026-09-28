@@ -294,6 +294,25 @@ def _join(sections):
     return "\n\n".join(b for b in blocks if b.strip())
 
 
+_HASHTAG_TOKEN = re.compile(r"^#\S+$")
+
+
+def _is_hashtag_dump(paragraph):
+    """A body paragraph the model restated as its own hashtags array —
+    "태그 #seminar #GracePark #..." captured live from hyperclovax. Real
+    hashtags already come back correctly through prose["hashtags"] (checked
+    separately, verbatim, on the same run); this is the model writing the
+    SAME list a second time as a fake paragraph, prefixed with whatever word
+    for "tags" it picked (English "Tags:", Korean "태그", "해시태그", or
+    nothing at all). Detected structurally rather than by matching a label,
+    so it does not matter which language or wording the model uses: real
+    prose about an event is never mostly hashtag tokens.
+    """
+    tokens = paragraph.split()
+    tag_tokens = sum(1 for t in tokens if _HASHTAG_TOKEN.match(t))
+    return tag_tokens >= 2 and tag_tokens >= len(tokens) / 2
+
+
 def _prose(prose, spec):
     cta = (prose.get("cta") or "").strip()
     # Stripping "[링크]" out of "지금 등록하세요: [링크]" leaves a sentence pointing at
@@ -314,7 +333,8 @@ def _prose(prose, spec):
             if b.strip() and b.strip() != cta
             and b.strip().strip("':\"").lower() not in _KEYS
             and len(b.split()) > 1
-            and not _LABEL_LEAD.match(b.strip())]
+            and not _LABEL_LEAD.match(b.strip())
+            and not _is_hashtag_dump(b.strip())]
     # The model routinely ends the body with the same ask as the cta ("Register
     # now to secure your spot…" twice, a few lines apart). A reader sees the
     # repeat; drop a body paragraph that opens with the cta's first three words.

@@ -18,6 +18,8 @@ import time
 from contextlib import contextmanager
 from typing import Dict, List, Optional
 
+import oauth_crypto  # encrypts oauth_accounts.*_token_enc at rest
+
 # Provisional inactivity gap that bounds a "session". Deliberately NOT tuned from
 # current timestamps (they are dev/test noise, not real work sessions) — revisit
 # once real usage accrues.
@@ -195,6 +197,52 @@ CREATE INDEX IF NOT EXISTS idx_gen_platform_created
 
 CREATE INDEX IF NOT EXISTS idx_copy_platform_copied
     ON copies(platform, copied_at DESC);
+
+-- oauth_accounts: one connected LinkedIn/Instagram account. Tokens are stored
+-- Fernet-encrypted (oauth_crypto.py) — this table never holds a usable secret
+-- in plaintext, including in ad-hoc `sqlite3 feedback.db` inspection.
+CREATE TABLE IF NOT EXISTS oauth_accounts (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform           TEXT NOT NULL,             -- 'linkedin' | 'instagram'
+    external_id        TEXT NOT NULL,             -- LinkedIn member/org URN id, or IG business account id
+    label              TEXT,                      -- display name only, e.g. "PKNIC" or "@pknic_official"
+    access_token_enc   BLOB NOT NULL,
+    refresh_token_enc  BLOB,                      -- nullable: LinkedIn's basic 3-legged flow issues none
+    page_token_enc     BLOB,                      -- UNUSED by the current Instagram flow (Instagram API with
+                                                   -- Instagram Login has no Facebook Page or page-scoped
+                                                   -- token at all — see oauth_providers.py's module docstring).
+                                                   -- Left in place, nullable, in case a Facebook-Login-based
+                                                   -- flow is ever added back for a different use case.
+    scope              TEXT,
+    expires_at         REAL,                      -- unix ts; NULL = unknown/non-expiring
+    connected_at       REAL NOT NULL,
+    updated_at         REAL NOT NULL,
+    revoked_at         REAL,                      -- soft-delete: disconnect keeps the row, clears tokens
+    UNIQUE(platform, external_id)
+);
+
+-- publish_log: every publish attempt, scheduled or immediate. `content_fingerprint`
+-- is the sha256 of the EXACT text sent, computed server-side from the approved
+-- feedback_events row at enqueue time — the publish call reads content from the
+-- database by generation_id, never from what a client POSTs, so there is no path
+-- from "the client sent different text" to "that text got published."
+CREATE TABLE IF NOT EXISTS publish_log (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    generation_id       INTEGER REFERENCES generations(id) ON DELETE SET NULL,
+    platform            TEXT NOT NULL,
+    oauth_account_id    INTEGER REFERENCES oauth_accounts(id) ON DELETE SET NULL,
+    content_fingerprint TEXT NOT NULL,   -- sha256 of the published text
+    status              TEXT NOT NULL DEFAULT 'pending',  -- pending | publishing | success | failed | canceled
+    scheduled_for       REAL,            -- unix ts; NULL = publish as soon as claimed
+    remote_post_id      TEXT,
+    error                TEXT,
+    attempts            INTEGER NOT NULL DEFAULT 0,
+    created_at          REAL NOT NULL,
+    updated_at          REAL NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_publish_due
+    ON publish_log(status, scheduled_for);
 """
 
 
@@ -987,6 +1035,221 @@ def hands_on_time_stats() -> Dict:
         "median_seconds": statistics.median(durations) if durations else None,
         "durations_seconds": durations,
     }
+
+
+# --------------------------------------------------------------------------
+# OAuth accounts and publishing
+# --------------------------------------------------------------------------
+def save_oauth_account(*, platform: str, external_id: str, label: Optional[str],
+                       access_token: str, refresh_token: Optional[str] = None,
+                       page_token: Optional[str] = None, scope: Optional[str] = None,
+                       expires_at: Optional[float] = None) -> int:
+    """Insert or reconnect an account. Re-running OAuth for an already-connected
+    (platform, external_id) UPDATES that row (new tokens, revoked_at cleared)
+    rather than creating a second row — reconnecting after an expired token is
+    the normal path, not a new account."""
+    now = time.time()
+    enc_access = oauth_crypto.encrypt(access_token)
+    enc_refresh = oauth_crypto.encrypt(refresh_token) if refresh_token else None
+    enc_page = oauth_crypto.encrypt(page_token) if page_token else None
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO oauth_accounts
+                (platform, external_id, label, access_token_enc, refresh_token_enc,
+                 page_token_enc, scope, expires_at, connected_at, updated_at, revoked_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            ON CONFLICT(platform, external_id) DO UPDATE SET
+                label = excluded.label,
+                access_token_enc = excluded.access_token_enc,
+                refresh_token_enc = excluded.refresh_token_enc,
+                page_token_enc = excluded.page_token_enc,
+                scope = excluded.scope,
+                expires_at = excluded.expires_at,
+                updated_at = excluded.updated_at,
+                revoked_at = NULL
+            """,
+            (platform, external_id, label, enc_access, enc_refresh, enc_page,
+             scope, expires_at, now, now),
+        )
+        if cur.lastrowid:
+            return cur.lastrowid
+        row = conn.execute(
+            "SELECT id FROM oauth_accounts WHERE platform = ? AND external_id = ?",
+            (platform, external_id),
+        ).fetchone()
+        return row["id"]
+
+
+def list_oauth_accounts(platform: Optional[str] = None) -> List[Dict]:
+    """Connected accounts for display — NEVER includes token columns. A route
+    that hands this straight to a JSON response cannot leak a token by
+    forgetting to strip a field, because the field was never selected."""
+    q = ("SELECT id, platform, external_id, label, scope, expires_at, "
+        "connected_at, updated_at, revoked_at FROM oauth_accounts "
+        "WHERE revoked_at IS NULL")
+    args: tuple = ()
+    if platform:
+        q += " AND platform = ?"
+        args = (platform,)
+    q += " ORDER BY connected_at DESC"
+    with _connect() as conn:
+        return [dict(r) for r in conn.execute(q, args).fetchall()]
+
+
+def get_oauth_tokens(account_id: int) -> Optional[Dict]:
+    """Decrypted tokens for the ONE call site allowed to see them: the publish
+    function that is about to use them. Raises ValueError (via oauth_crypto) if
+    the stored ciphertext doesn't decrypt under the current key."""
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM oauth_accounts WHERE id = ? AND revoked_at IS NULL",
+            (account_id,),
+        ).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["access_token"] = oauth_crypto.decrypt(d.pop("access_token_enc"))
+    d["refresh_token"] = oauth_crypto.decrypt(d.pop("refresh_token_enc"))
+    d["page_token"] = oauth_crypto.decrypt(d.pop("page_token_enc"))
+    return d
+
+
+def disconnect_oauth_account(account_id: int) -> bool:
+    """Soft-delete: revoked_at is set and the row (minus tokens, which stay
+    encrypted junk) survives so publish_log foreign keys and history remain
+    readable. Tokens are overwritten with an empty encrypted blob rather than
+    merely marked revoked, so a leaked backup of the DB file taken AFTER
+    disconnect cannot be replayed even if the key file also leaked."""
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE oauth_accounts
+               SET revoked_at = ?, updated_at = ?,
+                   access_token_enc = ?, refresh_token_enc = NULL, page_token_enc = NULL
+             WHERE id = ? AND revoked_at IS NULL
+            """,
+            (time.time(), time.time(), oauth_crypto.encrypt(""), account_id),
+        )
+        return cur.rowcount > 0
+
+
+def enqueue_publish(*, generation_id: int, platform: str, oauth_account_id: int,
+                    scheduled_for: Optional[float] = None) -> Dict:
+    """Reads the APPROVED content from feedback_events itself — the caller passes
+    only IDs, never text — and fingerprints exactly that string. This is the
+    control that makes "publish what was approved" true by construction: there
+    is no code path where a client-supplied string reaches a platform's API.
+
+    Raises ValueError if there is no approve/edit verdict on record for this
+    generation_id, or if the generation and platform don't match. A pending
+    edit awaiting review, or a rejected draft, cannot be enqueued.
+    """
+    with _connect() as conn:
+        gen = conn.execute(
+            "SELECT platform FROM generations WHERE id = ?", (generation_id,)
+        ).fetchone()
+        if not gen:
+            raise ValueError(f"no generation with id {generation_id}")
+        if gen["platform"] != platform:
+            raise ValueError(
+                f"generation {generation_id} is platform {gen['platform']!r}, not {platform!r}")
+        approved = conn.execute(
+            """
+            SELECT final_content FROM feedback_events
+             WHERE generation_id = ? AND platform = ? AND verdict IN ('approve', 'edit')
+               AND final_content IS NOT NULL
+             ORDER BY created_at DESC LIMIT 1
+            """,
+            (generation_id, platform),
+        ).fetchone()
+        if not approved:
+            raise ValueError(
+                f"generation {generation_id} has no approve/edit verdict on record — "
+                "nothing to publish")
+        fingerprint = hashlib.sha256(approved["final_content"].encode("utf-8")).hexdigest()
+        now = time.time()
+        cur = conn.execute(
+            """
+            INSERT INTO publish_log
+                (generation_id, platform, oauth_account_id, content_fingerprint,
+                 status, scheduled_for, attempts, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'pending', ?, 0, ?, ?)
+            """,
+            (generation_id, platform, oauth_account_id, fingerprint,
+             scheduled_for, now, now),
+        )
+        return {"id": cur.lastrowid, "content_fingerprint": fingerprint,
+                "content": approved["final_content"]}
+
+
+def due_publish_jobs(now: Optional[float] = None) -> List[Dict]:
+    """Pending jobs ready to run: immediate (scheduled_for IS NULL) or whose time
+    has come. The scheduler thread polls this; it never reads publish_log rows
+    directly, so "what counts as due" stays defined in one place."""
+    now = now if now is not None else time.time()
+    with _connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM publish_log
+             WHERE status = 'pending' AND (scheduled_for IS NULL OR scheduled_for <= ?)
+             ORDER BY created_at
+            """,
+            (now,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def claim_publish_job(job_id: int) -> bool:
+    """Atomic pending -> publishing transition. Returns False if another
+    scheduler tick (or another process) already claimed it — the caller must
+    not publish in that case. This is what makes it safe to run the poll loop
+    on a short interval without risking a double-post."""
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE publish_log SET status = 'publishing', attempts = attempts + 1,
+                   updated_at = ?
+             WHERE id = ? AND status = 'pending'
+            """,
+            (time.time(), job_id),
+        )
+        return cur.rowcount > 0
+
+
+def complete_publish_job(job_id: int, *, remote_post_id: Optional[str] = None,
+                         error: Optional[str] = None) -> None:
+    status = "failed" if error else "success"
+    with _connect() as conn:
+        conn.execute(
+            """
+            UPDATE publish_log SET status = ?, remote_post_id = ?, error = ?, updated_at = ?
+             WHERE id = ?
+            """,
+            (status, remote_post_id, error, time.time(), job_id),
+        )
+
+
+def cancel_publish_job(job_id: int) -> bool:
+    """Only a still-pending job can be canceled — one already claimed by the
+    scheduler (status='publishing') may already be mid-flight at the platform,
+    and marking it canceled here would not stop that."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE publish_log SET status = 'canceled', updated_at = ? "
+            "WHERE id = ? AND status = 'pending'",
+            (time.time(), job_id),
+        )
+        return cur.rowcount > 0
+
+
+def publish_log_for(generation_id: int) -> List[Dict]:
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM publish_log WHERE generation_id = ? ORDER BY created_at DESC",
+            (generation_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Button } from '../Button/Button';
+import { PublishPanel } from '../PublishPanel/PublishPanel';
 import './ReviewPanel.css';
 
 // Taxonomy keys are snake_case identifiers; these are the few that don't read
@@ -27,7 +28,7 @@ const FAMILY_LEAD = {
  * The note is free text and is never parsed. It exists because the chips are a
  * fixed taxonomy and the reason a draft is wrong often is not.
  */
-export function ReviewPanel({ platform, content, generationId, onStatus }) {
+export function ReviewPanel({ platform, content, generationId, hasImage, onStatus }) {
   const [flags, setFlags] = useState([]);
   // null = closed. Otherwise { mode: 'reject' | 'edit', pct }.
   const [review, setReview] = useState(null);
@@ -192,6 +193,15 @@ export function ReviewPanel({ platform, content, generationId, onStatus }) {
           </div>
         </div>
       )}
+
+      {(verdict === 'approve' || verdict === 'edit') && (
+        <PublishPanel
+          platform={platform}
+          generationId={generationId}
+          hasImage={hasImage}
+          onStatus={onStatus}
+        />
+      )}
     </div>
   );
 }
@@ -200,5 +210,6 @@ ReviewPanel.propTypes = {
   platform: PropTypes.string.isRequired,
   content: PropTypes.string,
   generationId: PropTypes.number,
+  hasImage: PropTypes.bool,
   onStatus: PropTypes.func,
 };

@@ -3,6 +3,40 @@ import PropTypes from 'prop-types';
 
 const PRICE_LABEL = { unset: 'Not stated', free: 'Free', paid: 'Paid' };
 
+// Static mirror of GET /api/brief/fields (server.py, sourced from
+// brief_fields.py). The hosted preview (Netlify) has no backend — server.py
+// binds to localhost only, by design (CLAUDE.md: LOCAL_ONLY) — so that fetch
+// always fails there. Before this, a failed fetch left a dev-facing error
+// ("is server.py running?") in place of the form, which made the one public
+// link to this project (linked from the case study) look broken on load
+// instead of showing what it actually does. Used ONLY as a fallback when the
+// live fetch fails; the real server's response always wins when reachable.
+// Keep in sync with brief_fields.FIELDS by hand — nothing enforces this copy.
+const FALLBACK_SPEC = {
+    fields: [
+        { name: 'event_type', kind: 'enum', required: true, label_en: 'Event type', label_ko: '행사 유형' },
+        { name: 'person', kind: 'text', required: false, label_en: 'Speaker', label_ko: '연사' },
+        { name: 'date', kind: 'date', required: true, label_en: 'Date', label_ko: '날짜' },
+        { name: 'time', kind: 'time', required: false, label_en: 'Time', label_ko: '시간' },
+        { name: 'timezone', kind: 'tz', required: false, label_en: 'Time zone', label_ko: '시간대' },
+        { name: 'location', kind: 'text', required: true, label_en: 'Location', label_ko: '장소' },
+        { name: 'map_url', kind: 'url', required: false, label_en: 'Map', label_ko: '지도' },
+        { name: 'price_kind', kind: 'enum', required: false, label_en: 'Price', label_ko: '참가비' },
+        { name: 'price', kind: 'money', required: false, label_en: 'Amount', label_ko: '금액' },
+        { name: 'currency', kind: 'enum', required: false, label_en: 'Currency', label_ko: '통화' },
+        { name: 'link', kind: 'url', required: false, label_en: 'Link', label_ko: '링크' },
+        { name: 'topics', kind: 'list', required: false, label_en: 'Agenda', label_ko: '주제' },
+    ],
+    event_types: [
+        { key: 'seminar', en: 'Seminar', ko: '세미나' },
+        { key: 'webinar', en: 'Webinar', ko: '웨비나' },
+        { key: 'conference', en: 'Conference', ko: '컨퍼런스' },
+    ],
+    timezones: ['PST', 'PDT', 'EST', 'EDT', 'KST', 'UTC', 'GMT', 'CET', 'JST'],
+    currencies: ['KRW', 'USD', 'EUR', 'JPY'],
+    price_kinds: ['unset', 'free', 'paid'],
+};
+
 /**
  * The typed brief form.
  *
@@ -17,16 +51,16 @@ const PRICE_LABEL = { unset: 'Not stated', free: 'Free', paid: 'Paid' };
  */
 export function BriefForm({ values, onChange, errors = {}, disabled }) {
     const [spec, setSpec] = useState(null);
-    const [specError, setSpecError] = useState(null);
 
     useEffect(() => {
         fetch('/api/brief/fields')
             .then((res) => (res.ok ? res.json() : Promise.reject(new Error('unavailable'))))
             .then(setSpec)
-            .catch(() => setSpecError('Field spec unavailable — is server.py running?'));
+            // No live server (e.g. the hosted preview) — fall back so the form
+            // still renders and is explorable rather than showing an error.
+            .catch(() => setSpec(FALLBACK_SPEC));
     }, []);
 
-    if (specError) return <p className="form-error">{specError}</p>;
     if (!spec) return <p className="form-hint">Loading fields…</p>;
 
     const ko = Boolean(values.ko);

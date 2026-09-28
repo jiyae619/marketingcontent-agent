@@ -1,3 +1,6 @@
 # Python backend dependencies (server.py).
 # The server is otherwise stdlib-only; LLM calls use urllib directly.
 python-dotenv>=1.0
+# Encrypts oauth_accounts.*_token_enc at rest (oauth_crypto.py) — the only
+# reason this isn't stdlib-only anymore.
+cryptography>=42

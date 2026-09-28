@@ -109,6 +109,28 @@ def main():
     t = assemble("kakaotalk", FULL, same)
     check("a cta identical to the hook is replaced", t.count(PROSE["hook"]) == 1, t)
 
+    # Live failure, hyperclovax, instagram, 2026-09-24: the model wrote a SECOND
+    # body paragraph that just restates the hashtags array, prefixed with the
+    # Korean word for "tags" — "태그 #seminar #GracePark #...". The real
+    # hashtags (in prose["hashtags"]) were fine; this was a duplicate.
+    tag_dump = {**PROSE, "body": [PROSE["body"][0],
+                                  "태그 #seminar #GracePark #KnowledgeEnhancement #ProfessionalDevelopment."]}
+    t = assemble("instagram", FULL, tag_dump)
+    check("a body paragraph that restates the hashtags (Korean label) is dropped",
+          "태그" not in t, t)
+    check("the REAL hashtags line still renders", "#career" in t, t)
+
+    for dump in ("Tags: #a #b #c", "#a #b #c #d", "해시태그 #a #b"):
+        check(f"hashtag-dump variant dropped: {dump!r}",
+              dump not in assemble("linkedin", FULL, {**PROSE, "body": [dump, "A real paragraph here."]}))
+
+    # One inline hashtag inside real prose must survive — only a paragraph
+    # that is MOSTLY hashtag tokens counts as a dump.
+    inline = {**PROSE, "body": ["This session covers #networking tips for professionals and grads."]}
+    t = assemble("linkedin", FULL, inline)
+    check("a paragraph with one incidental hashtag is NOT treated as a dump",
+          "networking tips" in t, t)
+
     # --- the 836-char whatsapp regression ------------------------------------
     # "sentences: 4" bounds a COUNT; a run-on sentence sails past it. Simulated
     # without a model call by handing assemble() an oversized body directly.

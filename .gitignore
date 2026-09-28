@@ -9,6 +9,10 @@ lerna-debug.log*
 
 # Local secrets
 .env
+# Fernet key encrypting OAuth tokens at rest (oauth_crypto.py). Losing this
+# file makes every stored token permanently undecryptable; back it up
+# somewhere other than this repo if you ever connect a real account.
+.oauth_key
 
 # Python
 __pycache__/
