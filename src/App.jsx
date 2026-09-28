@@ -202,8 +202,9 @@ function App() {
 
       {backendUnreachable && (
         <div className="notice" role="note">
-          Static preview — no backend attached. Generation runs on local models only when
-          {' '}<code>python3 server.py</code> is running on your machine.
+          You're viewing the live UI — the fields below are fully explorable. Generation
+          itself runs on a local model on the developer's machine and isn't available from
+          this hosted preview. See the case study for a recorded walkthrough.
         </div>
       )}
 
